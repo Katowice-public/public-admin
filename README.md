@@ -4,31 +4,48 @@ A Roblox admin panel written in Luau for use as a `LocalScript`.
 
 ## Features
 
-- Fly (WASD + Space / Shift while airborne)
-- Speed Boost (2x walk speed)
+- Fly (WASD + Q/E or Space / Shift) with speed slider, full camera orientation, and no walk animations
+- Walk Speed slider
 - Infinite Jump
-- NoClip (walk through walls)
+- Jump Power slider (works with both `JumpPower` and `JumpHeight` humanoids)
+- NoClip (walk through walls, restores collision on disable)
 - Click Teleport
-- ESP (player name tags through walls)
+- Player Teleport (teleport to nearest player)
+- Name ESP (player names + health through walls)
+- Box ESP (Highlight outline around players)
 - Full Bright
 - Low Gravity
+- FOV slider
+- Hitbox Expander with size slider (enlarges all character parts; client-side effectiveness varies by game)
+- Reset Character
+- Panic Button (disable all features instantly)
+- Close button fully unloads the panel and cleans up connections
+- Minimize button toggles between a small title bar and the full panel, changing `-` to `+`
 
 ## Installation
 
 1. Place `AdminPanel.luau` in **StarterPlayerScripts** as a `LocalScript`.
-2. Join the game and press `RightShift` to open the panel.
+2. Join the game and press `RightShift` to open or close the panel.
+3. Use the `-` / `+` button to minimize or restore the panel.
 
 ## Configuration
 
 Edit the `config` table at the top of `AdminPanel.luau` to change:
 
 - `toggleKey` — key to open / close the panel
-- `flySpeed` — fly movement speed
-- `walkSpeedMultiplier` — speed boost multiplier
+- `openOnStart` — show the panel automatically when the game loads
+- `flySpeed` — default fly speed
+- `flyUpKey` / `flyDownKey` — keys for vertical flight (default Q / E)
+- `walkSpeed` — default walk speed
+- `jumpPower` — default jump power
+- `jumpHeight` — default jump height used for conversion when a game uses `JumpHeight`
 - `lowGravity` — gravity value when Low Gravity is enabled
+- `defaultFov` / `boostedFov` — normal and boosted camera FOV
+- `hitboxSize` — default expanded hitbox size
 - `uiTheme` — accent colors and background colors
 
 ## Notes
 
 - This script only works in a client-side `LocalScript`.
 - Some features may be blocked by anti-exploit systems in certain games.
+- The Hitbox Expander only affects client-side detection; it cannot bypass server-side hit validation.
