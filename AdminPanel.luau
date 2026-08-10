@@ -562,11 +562,7 @@ local function setFly(enabled: boolean)
 			flyBodyVelocity.Velocity = direction
 
 			if flyBodyGyro and flyBodyGyro.Parent then
-				local look = camera.CFrame.LookVector
-				local flatLook = Vector3.new(look.X, 0, look.Z).Unit
-				if flatLook.Magnitude > 0 then
-					flyBodyGyro.CFrame = CFrame.new(hrp.Position, hrp.Position + flatLook)
-				end
+				flyBodyGyro.CFrame = camera.CFrame
 			end
 		end)
 	else
@@ -977,7 +973,7 @@ local function applyHitboxToCharacter(char: Model, data)
 	local hrp = char:WaitForChild("HumanoidRootPart", 5)
 	if not hrp or not hrp:IsA("BasePart") then return end
 
-	-- Remove old parts if any
+	-- Remove old generated parts if any
 	for _, old in ipairs(data.parts) do
 		if old and old.Parent then
 			old:Destroy()
@@ -993,7 +989,9 @@ local function applyHitboxToCharacter(char: Model, data)
 	sphere.Transparency = 0.9
 	sphere.CanCollide = false
 	sphere.CanQuery = true
+	sphere.CanTouch = true
 	sphere.Massless = true
+	sphere.CollisionGroupId = hrp.CollisionGroupId
 	sphere.Parent = char
 
 	local weld = Instance.new("Weld")
@@ -1004,27 +1002,33 @@ local function applyHitboxToCharacter(char: Model, data)
 
 	table.insert(data.parts, sphere)
 
-	-- Resize the actual HumanoidRootPart to make bullets more likely to register
-	if not data.originalSizes[hrp] then
-		data.originalSizes[hrp] = hrp.Size
-	end
-	hrp.Size = Vector3.new(liveValues.hitboxSize, liveValues.hitboxSize, liveValues.hitboxSize)
-	hrp.Transparency = 0.9
-
-	-- Resize main torso parts too
-	local torsoNames = { "UpperTorso", "LowerTorso", "Torso", "Head" }
-	for _, name in ipairs(torsoNames) do
-		local part = char:FindFirstChild(name)
-		if part and part:IsA("BasePart") then
+	-- Resize every BasePart in the character to make bullets/projectiles much more likely to hit
+	local scaleFactor = math.clamp(liveValues.hitboxSize / 5, 1.5, 5)
+	for _, part in pairs(char:GetDescendants()) do
+		if part:IsA("BasePart") then
 			if not data.originalSizes[part] then
 				data.originalSizes[part] = part.Size
 			end
-			part.Size = part.Size * 1.5
+			part.Size = part.Size * scaleFactor
+			part.Transparency = math.min(part.Transparency + 0.3, 0.9)
 		end
 	end
+
+	-- Resize any parts that load in later
+	data.connections.descendantAdded = char.DescendantAdded:Connect(function(descendant)
+		if descendant:IsA("BasePart") and not data.originalSizes[descendant] then
+			data.originalSizes[descendant] = descendant.Size
+			descendant.Size = descendant.Size * scaleFactor
+			descendant.Transparency = math.min(descendant.Transparency + 0.3, 0.9)
+		end
+	end)
 end
 
 local function restoreHitboxFor(data)
+	if data.connections.descendantAdded then
+		data.connections.descendantAdded:Disconnect()
+		data.connections.descendantAdded = nil
+	end
 	for part, original in pairs(data.originalSizes) do
 		if part and part.Parent then
 			part.Size = original
@@ -1082,16 +1086,10 @@ local function removeHitboxFor(targetPlayer: Player)
 end
 
 local function updateAllHitboxes()
-	for _, data in pairs(hitboxObjects) do
-		for _, part in ipairs(data.parts) do
-			if part and part.Parent then
-				part.Size = Vector3.new(liveValues.hitboxSize, liveValues.hitboxSize, liveValues.hitboxSize)
-			end
-		end
-		for part, original in pairs(data.originalSizes) do
-			if part and part.Parent and part.Name == "HumanoidRootPart" then
-				part.Size = Vector3.new(liveValues.hitboxSize, liveValues.hitboxSize, liveValues.hitboxSize)
-			end
+	for targetPlayer, data in pairs(hitboxObjects) do
+		if targetPlayer.Character then
+			restoreHitboxFor(data)
+			applyHitboxToCharacter(targetPlayer.Character, data)
 		end
 	end
 end
@@ -1208,7 +1206,7 @@ makeToggle("Low Gravity", "Moon gravity", setLowGravity)
 local _, setFovSlider = makeSlider("FOV", "Set camera field of view", 70, 140, 70, setFov)
 sliderSetters.fov = setFovSlider
 makeToggle("Hitbox Expander", "Expand player hitboxes", setHitboxExpander)
-local _, setHitboxSizeSlider = makeSlider("Hitbox Size", "Set expanded hitbox size", 2, 20, 10, setHitboxSize)
+local _, setHitboxSizeSlider = makeSlider("Hitbox Size", "Set expanded hitbox size", 2, 50, 10, setHitboxSize)
 sliderSetters.hitboxSize = setHitboxSizeSlider
 makeButton("Reset Character", "Respawn your character", "Reset", resetCharacter)
 makeButton("Panic", "Disable all features", "Stop", panic)
@@ -1250,9 +1248,10 @@ end)
 local minimized = false
 local function togglePanel()
 	if minimized then
+		minimized = false
+		minimizeButton.Text = "-"
 		mainFrame.Visible = true
 		TweenService:Create(mainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad), { Size = UDim2.new(0, 320, 0, 420) }):Play()
-		minimized = false
 	else
 		mainFrame.Visible = not mainFrame.Visible
 	end
@@ -1266,8 +1265,15 @@ connections.toggleKey = UserInputService.InputBegan:Connect(function(input, game
 end)
 
 minimizeButton.MouseButton1Click:Connect(function()
-	minimized = true
-	TweenService:Create(mainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad), { Size = UDim2.new(0, 320, 0, 44) }):Play()
+	if minimized then
+		minimized = false
+		minimizeButton.Text = "-"
+		TweenService:Create(mainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad), { Size = UDim2.new(0, 320, 0, 420) }):Play()
+	else
+		minimized = true
+		minimizeButton.Text = "+"
+		TweenService:Create(mainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad), { Size = UDim2.new(0, 320, 0, 44) }):Play()
+	end
 end)
 
 local function unload()

@@ -4,7 +4,7 @@ A Roblox admin panel written in Luau for use as a `LocalScript`.
 
 ## Features
 
-- Fly (WASD + Q/E or Space / Shift) with speed slider, locked forward orientation, and no walk animations
+- Fly (WASD + Q/E or Space / Shift) with speed slider, full camera orientation, and no walk animations
 - Walk Speed slider
 - Infinite Jump
 - Jump Power slider (works with both `JumpPower` and `JumpHeight` humanoids)
@@ -16,16 +16,17 @@ A Roblox admin panel written in Luau for use as a `LocalScript`.
 - Full Bright
 - Low Gravity
 - FOV slider
-- Hitbox Expander with size slider (enlarges HumanoidRootPart + torso parts; client-side effectiveness varies by game)
+- Hitbox Expander with size slider (enlarges all character parts; client-side effectiveness varies by game)
 - Reset Character
 - Panic Button (disable all features instantly)
 - Close button fully unloads the panel and cleans up connections
+- Minimize button toggles between a small title bar and the full panel, changing `-` to `+`
 
 ## Installation
 
 1. Place `AdminPanel.luau` in **StarterPlayerScripts** as a `LocalScript`.
 2. Join the game and press `RightShift` to open or close the panel.
-3. Minimize keeps the panel as a small title bar; Close fully removes it.
+3. Use the `-` / `+` button to minimize or restore the panel.
 
 ## Configuration
 
