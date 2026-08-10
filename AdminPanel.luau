@@ -3,14 +3,21 @@
 	Place this script in StarterPlayerScripts (or StarterGui as a LocalScript).
 	Default toggle key: RightShift
 	Features:
-		- Fly
-		- Speed Boost
+		- Fly (WASD + Q/E or Space/Shift) with speed slider
+		- Walk Speed slider
 		- Infinite Jump
+		- Jump Power slider (fixed for JumpHeight games)
 		- NoClip
 		- Click Teleport
-		- ESP (player name tags)
+		- Player Teleport
+		- Name ESP (name + health)
+		- Box ESP (Highlight outline)
 		- Full Bright
 		- Low Gravity
+		- FOV slider
+		- Hitbox Expander with size slider
+		- Panic Button (disable all)
+		- Reset Character
 ]]
 
 local Players = game:GetService("Players")
@@ -25,11 +32,18 @@ local mouse = player:GetMouse()
 
 local config = {
 	toggleKey = Enum.KeyCode.RightShift,
-	openOnStart = false,
+	openOnStart = true,
 	flySpeed = 50,
-	walkSpeedMultiplier = 2,
+	flyUpKey = Enum.KeyCode.E,
+	flyDownKey = Enum.KeyCode.Q,
+	walkSpeed = 32,
+	jumpPower = 100,
+	jumpHeight = 14.4,
 	lowGravity = 20,
 	defaultGravity = workspace.Gravity,
+	defaultFov = 70,
+	boostedFov = 120,
+	hitboxSize = 10,
 	uiTheme = {
 		background = Color3.fromRGB(30, 30, 35),
 		accent = Color3.fromRGB(88, 101, 242),
@@ -43,14 +57,26 @@ local config = {
 
 local state = {
 	fly = false,
-	speed = false,
 	infiniteJump = false,
 	noClip = false,
 	clickTeleport = false,
-	esp = false,
+	nameEsp = false,
+	boxEsp = false,
 	fullBright = false,
 	lowGravity = false,
+	hitboxExpander = false,
 }
+
+local liveValues = {
+	walkSpeed = 16,
+	jumpPower = 50,
+	jumpHeight = 7.2,
+	flySpeed = 50,
+	fov = 70,
+	hitboxSize = 10,
+}
+
+local sliderSetters: { [string]: (number) -> () } = {}
 
 local connections = {}
 local espObjects = {}
@@ -247,25 +273,222 @@ local function makeToggle(name: string, description: string, callback: (boolean)
 	return row
 end
 
+local function makeButton(name: string, description: string, buttonText: string, callback: () -> ()): Frame
+	local row = Instance.new("Frame")
+	row.Name = name .. "Row"
+	row.Size = UDim2.new(1, 0, 0, 56)
+	row.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+	row.BorderSizePixel = 0
+	row.LayoutOrder = #contentFrame:GetChildren() + 1
+
+	local rowCorner = Instance.new("UICorner")
+	rowCorner.CornerRadius = UDim.new(0, 8)
+	rowCorner.Parent = row
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.Size = UDim2.new(1, -96, 0, 22)
+	label.Position = UDim2.new(0, 12, 0, 8)
+	label.BackgroundTransparency = 1
+	label.Text = name
+	label.Font = Enum.Font.GothamSemibold
+	label.TextSize = 15
+	label.TextColor3 = config.uiTheme.text
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = row
+
+	local desc = Instance.new("TextLabel")
+	desc.Name = "Desc"
+	desc.Size = UDim2.new(1, -96, 0, 16)
+	desc.Position = UDim2.new(0, 12, 0, 30)
+	desc.BackgroundTransparency = 1
+	desc.Text = description
+	desc.Font = Enum.Font.Gotham
+	desc.TextSize = 12
+	desc.TextColor3 = config.uiTheme.subText
+	desc.TextXAlignment = Enum.TextXAlignment.Left
+	desc.Parent = row
+
+	local button = Instance.new("TextButton")
+	button.Name = "Action"
+	button.Size = UDim2.new(0, 80, 0, 32)
+	button.Position = UDim2.new(1, -92, 0, 12)
+	button.BackgroundColor3 = config.uiTheme.accent
+	button.Text = buttonText
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 14
+	button.TextColor3 = config.uiTheme.text
+	button.AutoButtonColor = true
+	button.Parent = row
+
+	local buttonCorner = Instance.new("UICorner")
+	buttonCorner.CornerRadius = UDim.new(0, 8)
+	buttonCorner.Parent = button
+
+	button.MouseButton1Click:Connect(callback)
+
+	row.Parent = contentFrame
+	return row
+end
+
+local function makeSlider(name: string, description: string, min: number, max: number, default: number, callback: (number) -> ()): (Frame, (number) -> ())
+	local row = Instance.new("Frame")
+	row.Name = name .. "Row"
+	row.Size = UDim2.new(1, 0, 0, 72)
+	row.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+	row.BorderSizePixel = 0
+	row.LayoutOrder = #contentFrame:GetChildren() + 1
+
+	local rowCorner = Instance.new("UICorner")
+	rowCorner.CornerRadius = UDim.new(0, 8)
+	rowCorner.Parent = row
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.Size = UDim2.new(1, -70, 0, 22)
+	label.Position = UDim2.new(0, 12, 0, 8)
+	label.BackgroundTransparency = 1
+	label.Text = name
+	label.Font = Enum.Font.GothamSemibold
+	label.TextSize = 15
+	label.TextColor3 = config.uiTheme.text
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = row
+
+	local valueLabel = Instance.new("TextLabel")
+	valueLabel.Name = "Value"
+	valueLabel.Size = UDim2.new(0, 56, 0, 22)
+	valueLabel.Position = UDim2.new(1, -68, 0, 8)
+	valueLabel.BackgroundTransparency = 1
+	valueLabel.Text = tostring(default)
+	valueLabel.Font = Enum.Font.GothamBold
+	valueLabel.TextSize = 14
+	valueLabel.TextColor3 = config.uiTheme.accent
+	valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+	valueLabel.Parent = row
+
+	local desc = Instance.new("TextLabel")
+	desc.Name = "Desc"
+	desc.Size = UDim2.new(1, -24, 0, 16)
+	desc.Position = UDim2.new(0, 12, 0, 48)
+	desc.BackgroundTransparency = 1
+	desc.Text = description
+	desc.Font = Enum.Font.Gotham
+	desc.TextSize = 12
+	desc.TextColor3 = config.uiTheme.subText
+	desc.TextXAlignment = Enum.TextXAlignment.Left
+	desc.Parent = row
+
+	local track = Instance.new("Frame")
+	track.Name = "Track"
+	track.Size = UDim2.new(1, -24, 0, 8)
+	track.Position = UDim2.new(0, 12, 0, 36)
+	track.BackgroundColor3 = Color3.fromRGB(60, 60, 65)
+	track.BorderSizePixel = 0
+	track.Active = true
+	track.Parent = row
+
+	local trackCorner = Instance.new("UICorner")
+	trackCorner.CornerRadius = UDim.new(1, 0)
+	trackCorner.Parent = track
+
+	local fill = Instance.new("Frame")
+	fill.Name = "Fill"
+	fill.Size = UDim2.new(0, 0, 1, 0)
+	fill.BackgroundColor3 = config.uiTheme.accent
+	fill.BorderSizePixel = 0
+	fill.Parent = track
+
+	local fillCorner = Instance.new("UICorner")
+	fillCorner.CornerRadius = UDim.new(1, 0)
+	fillCorner.Parent = fill
+
+	local knob = Instance.new("Frame")
+	knob.Name = "Knob"
+	knob.Size = UDim2.new(0, 16, 0, 16)
+	knob.Position = UDim2.new(0, -8, 0.5, -8)
+	knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	knob.BorderSizePixel = 0
+	knob.Parent = fill
+
+	local knobCorner = Instance.new("UICorner")
+	knobCorner.CornerRadius = UDim.new(1, 0)
+	knobCorner.Parent = knob
+
+	local function setValue(value: number, silent: boolean?)
+		value = math.clamp(value, min, max)
+		local alpha = (value - min) / (max - min)
+		fill.Size = UDim2.new(alpha, 0, 1, 0)
+		valueLabel.Text = tostring(math.floor(value + 0.5))
+		if not silent then
+			callback(value)
+		end
+	end
+
+	local function updateFromInput(inputX: number)
+		local absPos = track.AbsolutePosition.X
+		local absSize = track.AbsoluteSize.X
+		local alpha = math.clamp((inputX - absPos) / absSize, 0, 1)
+		setValue(min + alpha * (max - min))
+	end
+
+	local dragging = false
+	track.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			updateFromInput(input.Position.X)
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			updateFromInput(input.Position.X)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+
+	row.Parent = contentFrame
+	setValue(default, true)
+	return row, setValue
+end
+
 local function notify(text: string)
 	task.spawn(function()
 		local notice = Instance.new("TextLabel")
-		notice.Size = UDim2.new(0, 220, 0, 36)
-		notice.Position = UDim2.new(0.5, -110, 0, -40)
+		notice.Name = "Notification"
+		notice.Size = UDim2.new(0, 300, 0, 48)
+		notice.Position = UDim2.new(0.5, -150, 0, -60)
 		notice.BackgroundColor3 = config.uiTheme.accent
 		notice.Text = text
 		notice.Font = Enum.Font.GothamSemibold
 		notice.TextSize = 14
 		notice.TextColor3 = config.uiTheme.text
+		notice.TextStrokeTransparency = 0.8
+		notice.TextScaled = true
+		notice.TextWrapped = true
+		notice.TextXAlignment = Enum.TextXAlignment.Center
+		notice.TextYAlignment = Enum.TextYAlignment.Center
 		notice.Parent = screenGui
+
+		local padding = Instance.new("UIPadding")
+		padding.PaddingLeft = UDim.new(0, 12)
+		padding.PaddingRight = UDim.new(0, 12)
+		padding.PaddingTop = UDim.new(0, 8)
+		padding.PaddingBottom = UDim.new(0, 8)
+		padding.Parent = notice
 
 		local corner = Instance.new("UICorner")
 		corner.CornerRadius = UDim.new(0, 8)
 		corner.Parent = notice
 
-		TweenService:Create(notice, TweenInfo.new(0.4, Enum.EasingStyle.Quad), { Position = UDim2.new(0.5, -110, 0, 20) }):Play()
-		task.wait(2)
-		local out = TweenService:Create(notice, TweenInfo.new(0.4, Enum.EasingStyle.Quad), { Position = UDim2.new(0.5, -110, 0, -40) })
+		TweenService:Create(notice, TweenInfo.new(0.4, Enum.EasingStyle.Quad), { Position = UDim2.new(0.5, -150, 0, 20) }):Play()
+		task.wait(2.5)
+		local out = TweenService:Create(notice, TweenInfo.new(0.4, Enum.EasingStyle.Quad), { Position = UDim2.new(0.5, -150, 0, -60) })
 		out:Play()
 		out.Completed:Wait()
 		notice:Destroy()
@@ -315,9 +538,11 @@ local function setFly(enabled: boolean)
 			if UserInputService:IsKeyDown(Enum.KeyCode.D) then direction += camera.CFrame.RightVector end
 			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then direction += Vector3.new(0, 1, 0) end
 			if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then direction -= Vector3.new(0, 1, 0) end
+			if UserInputService:IsKeyDown(config.flyUpKey) then direction += Vector3.new(0, 1, 0) end
+			if UserInputService:IsKeyDown(config.flyDownKey) then direction -= Vector3.new(0, 1, 0) end
 
 			if direction.Magnitude > 0 then
-				direction = direction.Unit * config.flySpeed
+				direction = direction.Unit * liveValues.flySpeed
 			end
 			flyBodyVelocity.Velocity = direction
 		end)
@@ -329,24 +554,22 @@ local function setFly(enabled: boolean)
 	end
 end
 
--- Speed
-local speedConnection: RBXScriptConnection? = nil
-local function setSpeed(enabled: boolean)
-	state.speed = enabled
-	if speedConnection then speedConnection:Disconnect() end
+-- Walk Speed
+local walkSpeedConnection: RBXScriptConnection? = nil
 
+local function applyWalkSpeed()
 	local humanoid = getHumanoid()
-	if humanoid then
-		humanoid.WalkSpeed = enabled and 16 * config.walkSpeedMultiplier or 16
+	if humanoid and humanoid.WalkSpeed ~= liveValues.walkSpeed then
+		humanoid.WalkSpeed = liveValues.walkSpeed
 	end
+end
 
-	if enabled then
-		speedConnection = RunService.RenderStepped:Connect(function()
-			local h = getHumanoid()
-			if h and h.WalkSpeed ~= 16 * config.walkSpeedMultiplier then
-				h.WalkSpeed = 16 * config.walkSpeedMultiplier
-			end
-		end)
+local function setWalkSpeed(value: number)
+	liveValues.walkSpeed = value
+	if walkSpeedConnection then walkSpeedConnection:Disconnect() end
+	applyWalkSpeed()
+	if value ~= 16 then
+		walkSpeedConnection = RunService.RenderStepped:Connect(applyWalkSpeed)
 	end
 end
 
@@ -365,6 +588,34 @@ local function setInfiniteJump(enabled: boolean)
 			connections.infiniteJump:Disconnect()
 			connections.infiniteJump = nil
 		end
+	end
+end
+
+-- Jump Power
+local jumpPowerConnection: RBXScriptConnection? = nil
+
+local function applyJumpPower()
+	local humanoid = getHumanoid()
+	if not humanoid then return end
+
+	if humanoid.UseJumpPower then
+		if humanoid.JumpPower ~= liveValues.jumpPower then
+			humanoid.JumpPower = liveValues.jumpPower
+		end
+	else
+		local targetHeight = liveValues.jumpHeight * (liveValues.jumpPower / 50)
+		if humanoid.JumpHeight ~= targetHeight then
+			humanoid.JumpHeight = targetHeight
+		end
+	end
+end
+
+local function setJumpPower(value: number)
+	liveValues.jumpPower = value
+	if jumpPowerConnection then jumpPowerConnection:Disconnect() end
+	applyJumpPower()
+	if value ~= 50 then
+		jumpPowerConnection = RunService.RenderStepped:Connect(applyJumpPower)
 	end
 end
 
@@ -428,59 +679,147 @@ local function setClickTeleport(enabled: boolean)
 end
 
 -- ESP
-local function createEspFor(targetPlayer: Player)
+local function refreshEspFor(targetPlayer: Player)
 	if targetPlayer == player then return end
-	if espObjects[targetPlayer] then return end
 
-	local data = {
-		billboard = nil,
-		connections = {},
-	}
+	local data = espObjects[targetPlayer]
+	if not data then
+		data = {
+			billboard = nil,
+			nameLabel = nil,
+			healthLabel = nil,
+			healthConnection = nil,
+			highlight = nil,
+			connections = {},
+		}
+		espObjects[targetPlayer] = data
 
-	local function onCharacterAdded(char: Model)
-		local head = char:WaitForChild("Head", 5)
-		if not head then return end
-
-		if data.billboard and data.billboard.Parent then
-			data.billboard:Destroy()
+		local function updateHealth(humanoid: Humanoid)
+			if data.healthLabel then
+				local health = math.floor(humanoid.Health + 0.5)
+				local maxHealth = math.floor(humanoid.MaxHealth + 0.5)
+				data.healthLabel.Text = health .. " / " .. maxHealth
+				local ratio = health / maxHealth
+				local color = Color3.fromRGB(255, 255, 255)
+				if ratio > 0.6 then
+					color = Color3.fromRGB(100, 255, 100)
+				elseif ratio > 0.3 then
+					color = Color3.fromRGB(255, 255, 100)
+				else
+					color = Color3.fromRGB(255, 100, 100)
+				end
+				data.healthLabel.TextColor3 = color
+			end
 		end
 
-		local billboard = Instance.new("BillboardGui")
-		billboard.Name = "AdminEsp"
-		billboard.Adornee = head
-		billboard.Size = UDim2.new(0, 100, 0, 40)
-		billboard.StudsOffset = Vector3.new(0, 2.5, 0)
-		billboard.AlwaysOnTop = true
+		local function onCharacterAdded(char: Model)
+			local head = char:WaitForChild("Head", 5)
+			if head then
+				if data.billboard and data.billboard.Parent then
+					data.billboard:Destroy()
+				end
+				if data.healthConnection then
+					data.healthConnection:Disconnect()
+					data.healthConnection = nil
+				end
 
-		local label = Instance.new("TextLabel")
-		label.Size = UDim2.new(1, 0, 1, 0)
-		label.BackgroundTransparency = 1
-		label.Text = targetPlayer.Name
-		label.TextColor3 = Color3.fromRGB(255, 255, 255)
-		label.TextStrokeTransparency = 0.5
-		label.Font = Enum.Font.GothamBold
-		label.TextSize = 14
-		label.Parent = billboard
+				local billboard = Instance.new("BillboardGui")
+				billboard.Name = "AdminNameEsp"
+				billboard.Adornee = head
+				billboard.Size = UDim2.new(0, 120, 0, 60)
+				billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+				billboard.AlwaysOnTop = true
 
-		billboard.Parent = head
-		data.billboard = billboard
-	end
+				local nameLabel = Instance.new("TextLabel")
+				nameLabel.Name = "NameLabel"
+				nameLabel.Size = UDim2.new(1, 0, 0, 22)
+				nameLabel.Position = UDim2.new(0, 0, 0, 0)
+				nameLabel.BackgroundTransparency = 1
+				nameLabel.Text = targetPlayer.Name
+				nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+				nameLabel.TextStrokeTransparency = 0.5
+				nameLabel.Font = Enum.Font.GothamBold
+				nameLabel.TextSize = 14
+				nameLabel.Parent = billboard
+				data.nameLabel = nameLabel
 
-	local function onCharacterRemoving(char: Model)
-		if data.billboard and data.billboard.Parent then
-			data.billboard:Destroy()
-			data.billboard = nil
+				local healthLabel = Instance.new("TextLabel")
+				healthLabel.Name = "HealthLabel"
+				healthLabel.Size = UDim2.new(1, 0, 0, 18)
+				healthLabel.Position = UDim2.new(0, 0, 0, 20)
+				healthLabel.BackgroundTransparency = 1
+				healthLabel.Text = "? / ?"
+				healthLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+				healthLabel.TextStrokeTransparency = 0.5
+				healthLabel.Font = Enum.Font.GothamBold
+				healthLabel.TextSize = 12
+				healthLabel.Parent = billboard
+				data.healthLabel = healthLabel
+
+				local humanoid = char:FindFirstChildOfClass("Humanoid")
+				if humanoid then
+					updateHealth(humanoid)
+					data.healthConnection = humanoid.HealthChanged:Connect(function()
+						updateHealth(humanoid)
+					end)
+				end
+
+				billboard.Parent = head
+				data.billboard = billboard
+				if not state.nameEsp then
+					billboard.Enabled = false
+				end
+			end
+
+			if data.highlight and data.highlight.Parent then
+				data.highlight:Destroy()
+			end
+
+			local highlight = Instance.new("Highlight")
+			highlight.Name = "AdminBoxEsp"
+			highlight.Adornee = char
+			highlight.FillColor = config.uiTheme.accent
+			highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+			highlight.FillTransparency = 0.6
+			highlight.OutlineTransparency = 0
+			highlight.Parent = char
+			data.highlight = highlight
+			if not state.boxEsp then
+				highlight.Enabled = false
+			end
+		end
+
+		local function onCharacterRemoving(char: Model)
+			if data.billboard and data.billboard.Parent then
+				data.billboard:Destroy()
+				data.billboard = nil
+				data.nameLabel = nil
+				data.healthLabel = nil
+			end
+			if data.healthConnection then
+				data.healthConnection:Disconnect()
+				data.healthConnection = nil
+			end
+			if data.highlight and data.highlight.Parent then
+				data.highlight:Destroy()
+				data.highlight = nil
+			end
+		end
+
+		if targetPlayer.Character then
+			onCharacterAdded(targetPlayer.Character)
+		end
+
+		data.connections.added = targetPlayer.CharacterAdded:Connect(onCharacterAdded)
+		data.connections.removing = targetPlayer.CharacterRemoving:Connect(onCharacterRemoving)
+	else
+		if data.billboard then
+			data.billboard.Enabled = state.nameEsp
+		end
+		if data.highlight then
+			data.highlight.Enabled = state.boxEsp
 		end
 	end
-
-	if targetPlayer.Character then
-		onCharacterAdded(targetPlayer.Character)
-	end
-
-	data.connections.added = targetPlayer.CharacterAdded:Connect(onCharacterAdded)
-	data.connections.removing = targetPlayer.CharacterRemoving:Connect(onCharacterRemoving)
-
-	espObjects[targetPlayer] = data
 end
 
 local function removeEspFor(targetPlayer: Player)
@@ -489,6 +828,12 @@ local function removeEspFor(targetPlayer: Player)
 
 	if data.billboard and data.billboard.Parent then
 		data.billboard:Destroy()
+	end
+	if data.healthConnection then
+		data.healthConnection:Disconnect()
+	end
+	if data.highlight and data.highlight.Parent then
+		data.highlight:Destroy()
 	end
 
 	for _, conn in pairs(data.connections) do
@@ -500,22 +845,53 @@ local function removeEspFor(targetPlayer: Player)
 	espObjects[targetPlayer] = nil
 end
 
-local function setEsp(enabled: boolean)
-	state.esp = enabled
+local function updateAllEsp()
+	for _, target in pairs(Players:GetPlayers()) do
+		refreshEspFor(target)
+	end
+end
+
+local function setNameEsp(enabled: boolean)
+	state.nameEsp = enabled
+	updateAllEsp()
+
 	if enabled then
-		for _, target in pairs(Players:GetPlayers()) do
-			createEspFor(target)
+		if not connections.espAdded then
+			connections.espAdded = Players.PlayerAdded:Connect(refreshEspFor)
 		end
-		connections.espAdded = Players.PlayerAdded:Connect(createEspFor)
-		connections.espRemoving = Players.PlayerRemoving:Connect(removeEspFor)
+		if not connections.espRemoving then
+			connections.espRemoving = Players.PlayerRemoving:Connect(removeEspFor)
+		end
 	else
-		for _, target in pairs(Players:GetPlayers()) do
-			removeEspFor(target)
+		local anyEsp = state.boxEsp
+		if not anyEsp then
+			if connections.espAdded then connections.espAdded:Disconnect() end
+			if connections.espRemoving then connections.espRemoving:Disconnect() end
+			connections.espAdded = nil
+			connections.espRemoving = nil
 		end
-		if connections.espAdded then connections.espAdded:Disconnect() end
-		if connections.espRemoving then connections.espRemoving:Disconnect() end
-		connections.espAdded = nil
-		connections.espRemoving = nil
+	end
+end
+
+local function setBoxEsp(enabled: boolean)
+	state.boxEsp = enabled
+	updateAllEsp()
+
+	if enabled then
+		if not connections.espAdded then
+			connections.espAdded = Players.PlayerAdded:Connect(refreshEspFor)
+		end
+		if not connections.espRemoving then
+			connections.espRemoving = Players.PlayerRemoving:Connect(removeEspFor)
+		end
+	else
+		local anyEsp = state.nameEsp
+		if not anyEsp then
+			if connections.espAdded then connections.espAdded:Disconnect() end
+			if connections.espRemoving then connections.espRemoving:Disconnect() end
+			connections.espAdded = nil
+			connections.espRemoving = nil
+		end
 	end
 end
 
@@ -547,15 +923,220 @@ local function setLowGravity(enabled: boolean)
 	workspace.Gravity = enabled and config.lowGravity or config.defaultGravity
 end
 
+-- FOV
+local fovConnection: RBXScriptConnection? = nil
+
+local function applyFov()
+	local camera = workspace.CurrentCamera
+	if camera and camera.FieldOfView ~= liveValues.fov then
+		camera.FieldOfView = liveValues.fov
+	end
+end
+
+local function setFov(value: number)
+	liveValues.fov = value
+	if fovConnection then fovConnection:Disconnect() end
+	applyFov()
+	if value ~= 70 then
+		fovConnection = RunService.RenderStepped:Connect(applyFov)
+	end
+end
+
+-- Hitbox Expander
+local hitboxObjects: { [Player]: { part: BasePart?, connections: { [string]: RBXScriptConnection } } } = {}
+
+local function createHitboxFor(targetPlayer: Player)
+	if targetPlayer == player then return end
+	if hitboxObjects[targetPlayer] then return end
+
+	local data = {
+		part = nil,
+		connections = {},
+	}
+
+	local function onCharacterAdded(char: Model)
+		local hrp = char:WaitForChild("HumanoidRootPart", 5)
+		if not hrp or not hrp:IsA("BasePart") then return end
+
+		if data.part and data.part.Parent then
+			data.part:Destroy()
+		end
+
+		local part = Instance.new("Part")
+		part.Name = "ExpandedHitbox"
+		part.Shape = Enum.PartType.Ball
+		part.Size = Vector3.new(liveValues.hitboxSize, liveValues.hitboxSize, liveValues.hitboxSize)
+		part.Transparency = 0.8
+		part.CanCollide = false
+		part.CanQuery = true
+		part.Massless = true
+		part.Parent = char
+
+		local weld = Instance.new("Weld")
+		weld.Part0 = part
+		weld.Part1 = hrp
+		weld.C0 = CFrame.new(0, 0, 0)
+		weld.Parent = part
+
+		data.part = part
+	end
+
+	local function onCharacterRemoving(char: Model)
+		if data.part and data.part.Parent then
+			data.part:Destroy()
+			data.part = nil
+		end
+	end
+
+	if targetPlayer.Character then
+		onCharacterAdded(targetPlayer.Character)
+	end
+
+	data.connections.added = targetPlayer.CharacterAdded:Connect(onCharacterAdded)
+	data.connections.removing = targetPlayer.CharacterRemoving:Connect(onCharacterRemoving)
+	hitboxObjects[targetPlayer] = data
+end
+
+local function removeHitboxFor(targetPlayer: Player)
+	local data = hitboxObjects[targetPlayer]
+	if not data then return end
+
+	if data.part and data.part.Parent then
+		data.part:Destroy()
+	end
+	for _, conn in pairs(data.connections) do
+		if typeof(conn) == "RBXScriptConnection" then
+			conn:Disconnect()
+		end
+	end
+
+	hitboxObjects[targetPlayer] = nil
+end
+
+local function updateAllHitboxes()
+	for _, data in pairs(hitboxObjects) do
+		if data.part and data.part.Parent then
+			data.part.Size = Vector3.new(liveValues.hitboxSize, liveValues.hitboxSize, liveValues.hitboxSize)
+		end
+	end
+end
+
+local function setHitboxExpander(enabled: boolean)
+	state.hitboxExpander = enabled
+	if enabled then
+		for _, target in pairs(Players:GetPlayers()) do
+			createHitboxFor(target)
+		end
+		connections.hitboxAdded = Players.PlayerAdded:Connect(createHitboxFor)
+		connections.hitboxRemoving = Players.PlayerRemoving:Connect(removeHitboxFor)
+	else
+		for _, target in pairs(Players:GetPlayers()) do
+			removeHitboxFor(target)
+		end
+		if connections.hitboxAdded then connections.hitboxAdded:Disconnect() end
+		if connections.hitboxRemoving then connections.hitboxRemoving:Disconnect() end
+		connections.hitboxAdded = nil
+		connections.hitboxRemoving = nil
+	end
+end
+
+local function setHitboxSize(value: number)
+	liveValues.hitboxSize = value
+	updateAllHitboxes()
+end
+
+-- Player Teleport
+local function teleportToNearestPlayer()
+	local char = getCharacter()
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp or not hrp:IsA("BasePart") then
+		notify("No character found")
+		return
+	end
+
+	local myPos = hrp.Position
+	local nearest: Player? = nil
+	local nearestDist = math.huge
+
+	for _, target in pairs(Players:GetPlayers()) do
+		if target == player then continue end
+		local targetChar = target.Character
+		local targetHrp = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+		if targetHrp and targetHrp:IsA("BasePart") then
+			local dist = (targetHrp.Position - myPos).Magnitude
+			if dist < nearestDist then
+				nearestDist = dist
+				nearest = target
+			end
+		end
+	end
+
+	if nearest and nearest.Character then
+		local targetHrp = nearest.Character:FindFirstChild("HumanoidRootPart")
+		if targetHrp and targetHrp:IsA("BasePart") then
+			hrp.CFrame = targetHrp.CFrame + Vector3.new(0, 3, 0)
+			notify("Teleported to " .. nearest.Name)
+		end
+	else
+		notify("No nearby player found")
+	end
+end
+
+-- Reset Character
+local function resetCharacter()
+	local char = getCharacter()
+	if char then
+		char:BreakJoints()
+		notify("Character reset")
+	end
+end
+
+-- Panic: disable everything
+local function panic()
+	setFly(false)
+	setInfiniteJump(false)
+	setNoClip(false)
+	setClickTeleport(false)
+	setNameEsp(false)
+	setBoxEsp(false)
+	setFullBright(false)
+	setLowGravity(false)
+	setHitboxExpander(false)
+
+	sliderSetters.walkSpeed(16)
+	sliderSetters.jumpPower(50)
+	sliderSetters.flySpeed(50)
+	sliderSetters.fov(70)
+	sliderSetters.hitboxSize(10)
+
+	notify("All features disabled")
+end
+
 -- Build UI toggles
-makeToggle("Fly", "WASD + Space/Shift in the air", setFly)
-makeToggle("Speed Boost", "2x walk speed", setSpeed)
+makeToggle("Fly", "WASD + Q/E or Space/Shift", setFly)
+local _, setWalkSpeedSlider = makeSlider("Walk Speed", "Set your walk speed", 16, 200, 16, setWalkSpeed)
+sliderSetters.walkSpeed = setWalkSpeedSlider
 makeToggle("Infinite Jump", "Jump anywhere, anytime", setInfiniteJump)
+local _, setJumpPowerSlider = makeSlider("Jump Power", "Set your jump power", 50, 200, 50, setJumpPower)
+sliderSetters.jumpPower = setJumpPowerSlider
 makeToggle("NoClip", "Walk through walls", setNoClip)
 makeToggle("Click Teleport", "Click to teleport", setClickTeleport)
-makeToggle("ESP", "See player names through walls", setEsp)
+makeButton("Player Teleport", "Teleport to nearest player", "Go", teleportToNearestPlayer)
+makeToggle("Name ESP", "See player names and health", setNameEsp)
+makeToggle("Box ESP", "Highlight outline around players", setBoxEsp)
 makeToggle("Full Bright", "Remove darkness", setFullBright)
 makeToggle("Low Gravity", "Moon gravity", setLowGravity)
+local _, setFlySpeedSlider = makeSlider("Fly Speed", "Set your fly speed", 10, 200, 50, function(value)
+	liveValues.flySpeed = value
+end)
+sliderSetters.flySpeed = setFlySpeedSlider
+local _, setFovSlider = makeSlider("FOV", "Set camera field of view", 70, 140, 70, setFov)
+sliderSetters.fov = setFovSlider
+makeToggle("Hitbox Expander", "Expand player hitboxes", setHitboxExpander)
+local _, setHitboxSizeSlider = makeSlider("Hitbox Size", "Set expanded hitbox size", 2, 20, 10, setHitboxSize)
+sliderSetters.hitboxSize = setHitboxSizeSlider
+makeButton("Reset Character", "Respawn your character", "Reset", resetCharacter)
+makeButton("Panic", "Disable all features", "Stop", panic)
 
 -- Draggable window
 local dragging = false
@@ -627,8 +1208,17 @@ end)
 player.CharacterAdded:Connect(function()
 	task.wait(0.1)
 	if state.fly then setFly(true) end
-	if state.speed then setSpeed(true) end
+	if liveValues.walkSpeed ~= 16 then setWalkSpeed(liveValues.walkSpeed) end
+	if liveValues.jumpPower ~= 50 then setJumpPower(liveValues.jumpPower) end
 	if state.noClip then setNoClip(true) end
+	if liveValues.fov ~= 70 then setFov(liveValues.fov) end
 end)
 
-notify("Admin Panel loaded. Press RightShift to open.")
+-- Intro animation when the panel starts visible
+if config.openOnStart then
+	mainFrame.Size = UDim2.new(0, 320, 0, 0)
+	mainFrame.Visible = true
+	TweenService:Create(mainFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, 320, 0, 420) }):Play()
+end
+
+notify("Admin Panel loaded. Press RightShift to toggle.")
