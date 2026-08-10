@@ -79,6 +79,7 @@ local liveValues = {
 local sliderSetters: { [string]: (number) -> () } = {}
 
 local connections = {}
+local sliderConnections: { RBXScriptConnection } = {}
 local espObjects = {}
 
 -- UI Creation
@@ -331,7 +332,7 @@ local function makeButton(name: string, description: string, buttonText: string,
 	return row
 end
 
-local function makeSlider(name: string, description: string, min: number, max: number, default: number, callback: (number) -> ()): (Frame, (number) -> ())
+local function makeSlider(name: string, description: string, min: number, max: number, default: number, callback: (number) -> ()): (Frame, (number, boolean?) -> ())
 	local row = Instance.new("Frame")
 	row.Name = name .. "Row"
 	row.Size = UDim2.new(1, 0, 0, 72)
@@ -406,7 +407,7 @@ local function makeSlider(name: string, description: string, min: number, max: n
 	local knob = Instance.new("Frame")
 	knob.Name = "Knob"
 	knob.Size = UDim2.new(0, 16, 0, 16)
-	knob.Position = UDim2.new(0, -8, 0.5, -8)
+	knob.Position = UDim2.new(1, -8, 0.5, -8)
 	knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 	knob.BorderSizePixel = 0
 	knob.Parent = fill
@@ -440,17 +441,17 @@ local function makeSlider(name: string, description: string, min: number, max: n
 		end
 	end)
 
-	UserInputService.InputChanged:Connect(function(input)
+	table.insert(sliderConnections, UserInputService.InputChanged:Connect(function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			updateFromInput(input.Position.X)
 		end
-	end)
+	end))
 
-	UserInputService.InputEnded:Connect(function(input)
+	table.insert(sliderConnections, UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = false
 		end
-	end)
+	end))
 
 	row.Parent = contentFrame
 	setValue(default, true)
@@ -510,22 +511,36 @@ end
 
 -- Fly
 local flyBodyVelocity: BodyVelocity? = nil
+local flyBodyGyro: BodyGyro? = nil
 local flyConnection: RBXScriptConnection? = nil
 
 local function setFly(enabled: boolean)
 	state.fly = enabled
 	local char = getCharacter()
 	if not char then return end
+	local humanoid = getHumanoid()
 
 	if enabled then
 		local hrp = char:FindFirstChild("HumanoidRootPart")
 		if not hrp then return end
+
+		if humanoid then
+			humanoid:ChangeState(Enum.HumanoidStateType.Flying)
+			humanoid.AutoRotate = false
+		end
 
 		if flyBodyVelocity then flyBodyVelocity:Destroy() end
 		flyBodyVelocity = Instance.new("BodyVelocity")
 		flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
 		flyBodyVelocity.Velocity = Vector3.zero
 		flyBodyVelocity.Parent = hrp
+
+		if flyBodyGyro then flyBodyGyro:Destroy() end
+		flyBodyGyro = Instance.new("BodyGyro")
+		flyBodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+		flyBodyGyro.P = 10000
+		flyBodyGyro.CFrame = hrp.CFrame
+		flyBodyGyro.Parent = hrp
 
 		flyConnection = RunService.RenderStepped:Connect(function()
 			if not flyBodyVelocity or not flyBodyVelocity.Parent then return end
@@ -545,12 +560,25 @@ local function setFly(enabled: boolean)
 				direction = direction.Unit * liveValues.flySpeed
 			end
 			flyBodyVelocity.Velocity = direction
+
+			if flyBodyGyro and flyBodyGyro.Parent then
+				local look = camera.CFrame.LookVector
+				local flatLook = Vector3.new(look.X, 0, look.Z).Unit
+				if flatLook.Magnitude > 0 then
+					flyBodyGyro.CFrame = CFrame.new(hrp.Position, hrp.Position + flatLook)
+				end
+			end
 		end)
 	else
 		if flyBodyVelocity then flyBodyVelocity:Destroy() end
 		flyBodyVelocity = nil
+		if flyBodyGyro then flyBodyGyro:Destroy() end
+		flyBodyGyro = nil
 		if flyConnection then flyConnection:Disconnect() end
 		flyConnection = nil
+		if humanoid then
+			humanoid.AutoRotate = true
+		end
 	end
 end
 
@@ -943,49 +971,91 @@ local function setFov(value: number)
 end
 
 -- Hitbox Expander
-local hitboxObjects: { [Player]: { part: BasePart?, connections: { [string]: RBXScriptConnection } } } = {}
+local hitboxObjects: { [Player]: { parts: { BasePart }, originalSizes: { [BasePart]: Vector3 }, connections: { [string]: RBXScriptConnection } } } = {}
+
+local function applyHitboxToCharacter(char: Model, data)
+	local hrp = char:WaitForChild("HumanoidRootPart", 5)
+	if not hrp or not hrp:IsA("BasePart") then return end
+
+	-- Remove old parts if any
+	for _, old in ipairs(data.parts) do
+		if old and old.Parent then
+			old:Destroy()
+		end
+	end
+	data.parts = {}
+
+	-- Create a large sphere around the character (secondary hitbox)
+	local sphere = Instance.new("Part")
+	sphere.Name = "ExpandedHitbox"
+	sphere.Shape = Enum.PartType.Ball
+	sphere.Size = Vector3.new(liveValues.hitboxSize, liveValues.hitboxSize, liveValues.hitboxSize)
+	sphere.Transparency = 0.9
+	sphere.CanCollide = false
+	sphere.CanQuery = true
+	sphere.Massless = true
+	sphere.Parent = char
+
+	local weld = Instance.new("Weld")
+	weld.Part0 = sphere
+	weld.Part1 = hrp
+	weld.C0 = CFrame.new(0, 0, 0)
+	weld.Parent = sphere
+
+	table.insert(data.parts, sphere)
+
+	-- Resize the actual HumanoidRootPart to make bullets more likely to register
+	if not data.originalSizes[hrp] then
+		data.originalSizes[hrp] = hrp.Size
+	end
+	hrp.Size = Vector3.new(liveValues.hitboxSize, liveValues.hitboxSize, liveValues.hitboxSize)
+	hrp.Transparency = 0.9
+
+	-- Resize main torso parts too
+	local torsoNames = { "UpperTorso", "LowerTorso", "Torso", "Head" }
+	for _, name in ipairs(torsoNames) do
+		local part = char:FindFirstChild(name)
+		if part and part:IsA("BasePart") then
+			if not data.originalSizes[part] then
+				data.originalSizes[part] = part.Size
+			end
+			part.Size = part.Size * 1.5
+		end
+	end
+end
+
+local function restoreHitboxFor(data)
+	for part, original in pairs(data.originalSizes) do
+		if part and part.Parent then
+			part.Size = original
+		end
+	end
+	data.originalSizes = {}
+	for _, part in ipairs(data.parts) do
+		if part and part.Parent then
+			part:Destroy()
+		end
+	end
+	data.parts = {}
+end
 
 local function createHitboxFor(targetPlayer: Player)
 	if targetPlayer == player then return end
 	if hitboxObjects[targetPlayer] then return end
 
 	local data = {
-		part = nil,
+		parts = {},
+		originalSizes = {},
 		connections = {},
 	}
 
 	local function onCharacterAdded(char: Model)
-		local hrp = char:WaitForChild("HumanoidRootPart", 5)
-		if not hrp or not hrp:IsA("BasePart") then return end
-
-		if data.part and data.part.Parent then
-			data.part:Destroy()
-		end
-
-		local part = Instance.new("Part")
-		part.Name = "ExpandedHitbox"
-		part.Shape = Enum.PartType.Ball
-		part.Size = Vector3.new(liveValues.hitboxSize, liveValues.hitboxSize, liveValues.hitboxSize)
-		part.Transparency = 0.8
-		part.CanCollide = false
-		part.CanQuery = true
-		part.Massless = true
-		part.Parent = char
-
-		local weld = Instance.new("Weld")
-		weld.Part0 = part
-		weld.Part1 = hrp
-		weld.C0 = CFrame.new(0, 0, 0)
-		weld.Parent = part
-
-		data.part = part
+		restoreHitboxFor(data)
+		applyHitboxToCharacter(char, data)
 	end
 
 	local function onCharacterRemoving(char: Model)
-		if data.part and data.part.Parent then
-			data.part:Destroy()
-			data.part = nil
-		end
+		restoreHitboxFor(data)
 	end
 
 	if targetPlayer.Character then
@@ -1001,9 +1071,7 @@ local function removeHitboxFor(targetPlayer: Player)
 	local data = hitboxObjects[targetPlayer]
 	if not data then return end
 
-	if data.part and data.part.Parent then
-		data.part:Destroy()
-	end
+	restoreHitboxFor(data)
 	for _, conn in pairs(data.connections) do
 		if typeof(conn) == "RBXScriptConnection" then
 			conn:Disconnect()
@@ -1015,8 +1083,15 @@ end
 
 local function updateAllHitboxes()
 	for _, data in pairs(hitboxObjects) do
-		if data.part and data.part.Parent then
-			data.part.Size = Vector3.new(liveValues.hitboxSize, liveValues.hitboxSize, liveValues.hitboxSize)
+		for _, part in ipairs(data.parts) do
+			if part and part.Parent then
+				part.Size = Vector3.new(liveValues.hitboxSize, liveValues.hitboxSize, liveValues.hitboxSize)
+			end
+		end
+		for part, original in pairs(data.originalSizes) do
+			if part and part.Parent and part.Name == "HumanoidRootPart" then
+				part.Size = Vector3.new(liveValues.hitboxSize, liveValues.hitboxSize, liveValues.hitboxSize)
+			end
 		end
 	end
 end
@@ -1114,6 +1189,10 @@ end
 
 -- Build UI toggles
 makeToggle("Fly", "WASD + Q/E or Space/Shift", setFly)
+local _, setFlySpeedSlider = makeSlider("Fly Speed", "Set your fly speed", 10, 200, 50, function(value)
+	liveValues.flySpeed = value
+end)
+sliderSetters.flySpeed = setFlySpeedSlider
 local _, setWalkSpeedSlider = makeSlider("Walk Speed", "Set your walk speed", 16, 200, 16, setWalkSpeed)
 sliderSetters.walkSpeed = setWalkSpeedSlider
 makeToggle("Infinite Jump", "Jump anywhere, anytime", setInfiniteJump)
@@ -1126,10 +1205,6 @@ makeToggle("Name ESP", "See player names and health", setNameEsp)
 makeToggle("Box ESP", "Highlight outline around players", setBoxEsp)
 makeToggle("Full Bright", "Remove darkness", setFullBright)
 makeToggle("Low Gravity", "Moon gravity", setLowGravity)
-local _, setFlySpeedSlider = makeSlider("Fly Speed", "Set your fly speed", 10, 200, 50, function(value)
-	liveValues.flySpeed = value
-end)
-sliderSetters.flySpeed = setFlySpeedSlider
 local _, setFovSlider = makeSlider("FOV", "Set camera field of view", 70, 140, 70, setFov)
 sliderSetters.fov = setFovSlider
 makeToggle("Hitbox Expander", "Expand player hitboxes", setHitboxExpander)
@@ -1164,7 +1239,7 @@ titleBar.InputChanged:Connect(function(input)
 	end
 end)
 
-UserInputService.InputChanged:Connect(function(input)
+connections.drag = UserInputService.InputChanged:Connect(function(input)
 	if input == dragInput and dragging and startPos then
 		local delta = input.Position - dragStart
 		mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
@@ -1183,7 +1258,7 @@ local function togglePanel()
 	end
 end
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
+connections.toggleKey = UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 	if input.KeyCode == config.toggleKey then
 		togglePanel()
@@ -1192,20 +1267,45 @@ end)
 
 minimizeButton.MouseButton1Click:Connect(function()
 	minimized = true
-	local tween = TweenService:Create(mainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad), { Size = UDim2.new(0, 320, 0, 44) })
-	tween:Play()
-	tween.Completed:Connect(function()
-		mainFrame.Visible = false
-		minimized = false
-	end)
+	TweenService:Create(mainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad), { Size = UDim2.new(0, 320, 0, 44) }):Play()
 end)
 
-closeButton.MouseButton1Click:Connect(function()
-	mainFrame.Visible = false
-end)
+local function unload()
+	panic()
+
+	for _, conn in pairs(connections) do
+		if typeof(conn) == "RBXScriptConnection" then
+			conn:Disconnect()
+		end
+	end
+	for _, conn in ipairs(sliderConnections) do
+		conn:Disconnect()
+	end
+
+	if flyBodyVelocity and flyBodyVelocity.Parent then
+		flyBodyVelocity:Destroy()
+	end
+	if noClipOriginalStates then
+		local char = getCharacter()
+		if char then
+			for part, original in pairs(noClipOriginalStates) do
+				if part and part.Parent then
+					part.CanCollide = original
+				end
+			end
+		end
+	end
+
+	notify("Admin Panel unloaded")
+	task.delay(0.5, function()
+		screenGui:Destroy()
+	end)
+end
+
+closeButton.MouseButton1Click:Connect(unload)
 
 -- Reset states on character respawn to avoid stuck physics
-player.CharacterAdded:Connect(function()
+connections.characterAdded = player.CharacterAdded:Connect(function()
 	task.wait(0.1)
 	if state.fly then setFly(true) end
 	if liveValues.walkSpeed ~= 16 then setWalkSpeed(liveValues.walkSpeed) end
