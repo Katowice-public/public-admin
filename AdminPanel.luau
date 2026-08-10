@@ -25,7 +25,7 @@ local mouse = player:GetMouse()
 
 local config = {
 	toggleKey = Enum.KeyCode.RightShift,
-	openOnStart = false,
+	openOnStart = true,
 	flySpeed = 50,
 	walkSpeedMultiplier = 2,
 	lowGravity = 20,
@@ -250,22 +250,35 @@ end
 local function notify(text: string)
 	task.spawn(function()
 		local notice = Instance.new("TextLabel")
-		notice.Size = UDim2.new(0, 220, 0, 36)
-		notice.Position = UDim2.new(0.5, -110, 0, -40)
+		notice.Name = "Notification"
+		notice.Size = UDim2.new(0, 300, 0, 48)
+		notice.Position = UDim2.new(0.5, -150, 0, -60)
 		notice.BackgroundColor3 = config.uiTheme.accent
 		notice.Text = text
 		notice.Font = Enum.Font.GothamSemibold
 		notice.TextSize = 14
 		notice.TextColor3 = config.uiTheme.text
+		notice.TextStrokeTransparency = 0.8
+		notice.TextScaled = true
+		notice.TextWrapped = true
+		notice.TextXAlignment = Enum.TextXAlignment.Center
+		notice.TextYAlignment = Enum.TextYAlignment.Center
 		notice.Parent = screenGui
+
+		local padding = Instance.new("UIPadding")
+		padding.PaddingLeft = UDim.new(0, 12)
+		padding.PaddingRight = UDim.new(0, 12)
+		padding.PaddingTop = UDim.new(0, 8)
+		padding.PaddingBottom = UDim.new(0, 8)
+		padding.Parent = notice
 
 		local corner = Instance.new("UICorner")
 		corner.CornerRadius = UDim.new(0, 8)
 		corner.Parent = notice
 
-		TweenService:Create(notice, TweenInfo.new(0.4, Enum.EasingStyle.Quad), { Position = UDim2.new(0.5, -110, 0, 20) }):Play()
-		task.wait(2)
-		local out = TweenService:Create(notice, TweenInfo.new(0.4, Enum.EasingStyle.Quad), { Position = UDim2.new(0.5, -110, 0, -40) })
+		TweenService:Create(notice, TweenInfo.new(0.4, Enum.EasingStyle.Quad), { Position = UDim2.new(0.5, -150, 0, 20) }):Play()
+		task.wait(2.5)
+		local out = TweenService:Create(notice, TweenInfo.new(0.4, Enum.EasingStyle.Quad), { Position = UDim2.new(0.5, -150, 0, -60) })
 		out:Play()
 		out.Completed:Wait()
 		notice:Destroy()
@@ -631,4 +644,11 @@ player.CharacterAdded:Connect(function()
 	if state.noClip then setNoClip(true) end
 end)
 
-notify("Admin Panel loaded. Press RightShift to open.")
+-- Intro animation when the panel starts visible
+if config.openOnStart then
+	mainFrame.Size = UDim2.new(0, 320, 0, 0)
+	mainFrame.Visible = true
+	TweenService:Create(mainFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, 320, 0, 420) }):Play()
+end
+
+notify("Admin Panel loaded. Press RightShift to toggle.")
