@@ -3,14 +3,20 @@
 	Place this script in StarterPlayerScripts (or StarterGui as a LocalScript).
 	Default toggle key: RightShift
 	Features:
-		- Fly
+		- Fly (WASD + Q/E or Space/Shift)
 		- Speed Boost
 		- Infinite Jump
+		- Jump Power Boost
 		- NoClip
 		- Click Teleport
-		- ESP (player name tags)
+		- Player Teleport
+		- Name ESP
+		- Box ESP (Highlight outline)
 		- Full Bright
 		- Low Gravity
+		- FOV Toggle
+		- Panic Button (disable all)
+		- Reset Character
 ]]
 
 local Players = game:GetService("Players")
@@ -27,9 +33,14 @@ local config = {
 	toggleKey = Enum.KeyCode.RightShift,
 	openOnStart = true,
 	flySpeed = 50,
+	flyUpKey = Enum.KeyCode.E,
+	flyDownKey = Enum.KeyCode.Q,
 	walkSpeedMultiplier = 2,
+	jumpPowerMultiplier = 2,
 	lowGravity = 20,
 	defaultGravity = workspace.Gravity,
+	defaultFov = 70,
+	boostedFov = 120,
 	uiTheme = {
 		background = Color3.fromRGB(30, 30, 35),
 		accent = Color3.fromRGB(88, 101, 242),
@@ -45,11 +56,14 @@ local state = {
 	fly = false,
 	speed = false,
 	infiniteJump = false,
+	jumpPower = false,
 	noClip = false,
 	clickTeleport = false,
-	esp = false,
+	nameEsp = false,
+	boxEsp = false,
 	fullBright = false,
 	lowGravity = false,
+	fov = false,
 }
 
 local connections = {}
@@ -247,6 +261,64 @@ local function makeToggle(name: string, description: string, callback: (boolean)
 	return row
 end
 
+local function makeButton(name: string, description: string, buttonText: string, callback: () -> ()): Frame
+	local row = Instance.new("Frame")
+	row.Name = name .. "Row"
+	row.Size = UDim2.new(1, 0, 0, 56)
+	row.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+	row.BorderSizePixel = 0
+	row.LayoutOrder = #contentFrame:GetChildren() + 1
+
+	local rowCorner = Instance.new("UICorner")
+	rowCorner.CornerRadius = UDim.new(0, 8)
+	rowCorner.Parent = row
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.Size = UDim2.new(1, -96, 0, 22)
+	label.Position = UDim2.new(0, 12, 0, 8)
+	label.BackgroundTransparency = 1
+	label.Text = name
+	label.Font = Enum.Font.GothamSemibold
+	label.TextSize = 15
+	label.TextColor3 = config.uiTheme.text
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = row
+
+	local desc = Instance.new("TextLabel")
+	desc.Name = "Desc"
+	desc.Size = UDim2.new(1, -96, 0, 16)
+	desc.Position = UDim2.new(0, 12, 0, 30)
+	desc.BackgroundTransparency = 1
+	desc.Text = description
+	desc.Font = Enum.Font.Gotham
+	desc.TextSize = 12
+	desc.TextColor3 = config.uiTheme.subText
+	desc.TextXAlignment = Enum.TextXAlignment.Left
+	desc.Parent = row
+
+	local button = Instance.new("TextButton")
+	button.Name = "Action"
+	button.Size = UDim2.new(0, 80, 0, 32)
+	button.Position = UDim2.new(1, -92, 0, 12)
+	button.BackgroundColor3 = config.uiTheme.accent
+	button.Text = buttonText
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 14
+	button.TextColor3 = config.uiTheme.text
+	button.AutoButtonColor = true
+	button.Parent = row
+
+	local buttonCorner = Instance.new("UICorner")
+	buttonCorner.CornerRadius = UDim.new(0, 8)
+	buttonCorner.Parent = button
+
+	button.MouseButton1Click:Connect(callback)
+
+	row.Parent = contentFrame
+	return row
+end
+
 local function notify(text: string)
 	task.spawn(function()
 		local notice = Instance.new("TextLabel")
@@ -328,6 +400,8 @@ local function setFly(enabled: boolean)
 			if UserInputService:IsKeyDown(Enum.KeyCode.D) then direction += camera.CFrame.RightVector end
 			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then direction += Vector3.new(0, 1, 0) end
 			if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then direction -= Vector3.new(0, 1, 0) end
+			if UserInputService:IsKeyDown(config.flyUpKey) then direction += Vector3.new(0, 1, 0) end
+			if UserInputService:IsKeyDown(config.flyDownKey) then direction -= Vector3.new(0, 1, 0) end
 
 			if direction.Magnitude > 0 then
 				direction = direction.Unit * config.flySpeed
@@ -378,6 +452,27 @@ local function setInfiniteJump(enabled: boolean)
 			connections.infiniteJump:Disconnect()
 			connections.infiniteJump = nil
 		end
+	end
+end
+
+-- Jump Power
+local jumpPowerConnection: RBXScriptConnection? = nil
+local function setJumpPower(enabled: boolean)
+	state.jumpPower = enabled
+	if jumpPowerConnection then jumpPowerConnection:Disconnect() end
+
+	local humanoid = getHumanoid()
+	if humanoid then
+		humanoid.JumpPower = enabled and 50 * config.jumpPowerMultiplier or 50
+	end
+
+	if enabled then
+		jumpPowerConnection = RunService.RenderStepped:Connect(function()
+			local h = getHumanoid()
+			if h and h.JumpPower ~= 50 * config.jumpPowerMultiplier then
+				h.JumpPower = 50 * config.jumpPowerMultiplier
+			end
+		end)
 	end
 end
 
@@ -441,59 +536,92 @@ local function setClickTeleport(enabled: boolean)
 end
 
 -- ESP
-local function createEspFor(targetPlayer: Player)
+local function refreshEspFor(targetPlayer: Player)
 	if targetPlayer == player then return end
-	if espObjects[targetPlayer] then return end
 
-	local data = {
-		billboard = nil,
-		connections = {},
-	}
+	local data = espObjects[targetPlayer]
+	if not data then
+		data = {
+			billboard = nil,
+			highlight = nil,
+			connections = {},
+		}
+		espObjects[targetPlayer] = data
 
-	local function onCharacterAdded(char: Model)
-		local head = char:WaitForChild("Head", 5)
-		if not head then return end
+		local function onCharacterAdded(char: Model)
+			local head = char:WaitForChild("Head", 5)
+			if head then
+				if data.billboard and data.billboard.Parent then
+					data.billboard:Destroy()
+				end
 
-		if data.billboard and data.billboard.Parent then
-			data.billboard:Destroy()
+				local billboard = Instance.new("BillboardGui")
+				billboard.Name = "AdminNameEsp"
+				billboard.Adornee = head
+				billboard.Size = UDim2.new(0, 120, 0, 44)
+				billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+				billboard.AlwaysOnTop = true
+
+				local label = Instance.new("TextLabel")
+				label.Size = UDim2.new(1, 0, 1, 0)
+				label.BackgroundTransparency = 1
+				label.Text = targetPlayer.Name
+				label.TextColor3 = Color3.fromRGB(255, 255, 255)
+				label.TextStrokeTransparency = 0.5
+				label.Font = Enum.Font.GothamBold
+				label.TextSize = 14
+				label.Parent = billboard
+
+				billboard.Parent = head
+				data.billboard = billboard
+				if not state.nameEsp then
+					billboard.Enabled = false
+				end
+			end
+
+			if data.highlight and data.highlight.Parent then
+				data.highlight:Destroy()
+			end
+
+			local highlight = Instance.new("Highlight")
+			highlight.Name = "AdminBoxEsp"
+			highlight.Adornee = char
+			highlight.FillColor = config.uiTheme.accent
+			highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+			highlight.FillTransparency = 0.6
+			highlight.OutlineTransparency = 0
+			highlight.Parent = char
+			data.highlight = highlight
+			if not state.boxEsp then
+				highlight.Enabled = false
+			end
 		end
 
-		local billboard = Instance.new("BillboardGui")
-		billboard.Name = "AdminEsp"
-		billboard.Adornee = head
-		billboard.Size = UDim2.new(0, 100, 0, 40)
-		billboard.StudsOffset = Vector3.new(0, 2.5, 0)
-		billboard.AlwaysOnTop = true
+		local function onCharacterRemoving(char: Model)
+			if data.billboard and data.billboard.Parent then
+				data.billboard:Destroy()
+				data.billboard = nil
+			end
+			if data.highlight and data.highlight.Parent then
+				data.highlight:Destroy()
+				data.highlight = nil
+			end
+		end
 
-		local label = Instance.new("TextLabel")
-		label.Size = UDim2.new(1, 0, 1, 0)
-		label.BackgroundTransparency = 1
-		label.Text = targetPlayer.Name
-		label.TextColor3 = Color3.fromRGB(255, 255, 255)
-		label.TextStrokeTransparency = 0.5
-		label.Font = Enum.Font.GothamBold
-		label.TextSize = 14
-		label.Parent = billboard
+		if targetPlayer.Character then
+			onCharacterAdded(targetPlayer.Character)
+		end
 
-		billboard.Parent = head
-		data.billboard = billboard
-	end
-
-	local function onCharacterRemoving(char: Model)
-		if data.billboard and data.billboard.Parent then
-			data.billboard:Destroy()
-			data.billboard = nil
+		data.connections.added = targetPlayer.CharacterAdded:Connect(onCharacterAdded)
+		data.connections.removing = targetPlayer.CharacterRemoving:Connect(onCharacterRemoving)
+	else
+		if data.billboard then
+			data.billboard.Enabled = state.nameEsp
+		end
+		if data.highlight then
+			data.highlight.Enabled = state.boxEsp
 		end
 	end
-
-	if targetPlayer.Character then
-		onCharacterAdded(targetPlayer.Character)
-	end
-
-	data.connections.added = targetPlayer.CharacterAdded:Connect(onCharacterAdded)
-	data.connections.removing = targetPlayer.CharacterRemoving:Connect(onCharacterRemoving)
-
-	espObjects[targetPlayer] = data
 end
 
 local function removeEspFor(targetPlayer: Player)
@@ -502,6 +630,9 @@ local function removeEspFor(targetPlayer: Player)
 
 	if data.billboard and data.billboard.Parent then
 		data.billboard:Destroy()
+	end
+	if data.highlight and data.highlight.Parent then
+		data.highlight:Destroy()
 	end
 
 	for _, conn in pairs(data.connections) do
@@ -513,22 +644,53 @@ local function removeEspFor(targetPlayer: Player)
 	espObjects[targetPlayer] = nil
 end
 
-local function setEsp(enabled: boolean)
-	state.esp = enabled
+local function updateAllEsp()
+	for _, target in pairs(Players:GetPlayers()) do
+		refreshEspFor(target)
+	end
+end
+
+local function setNameEsp(enabled: boolean)
+	state.nameEsp = enabled
+	updateAllEsp()
+
 	if enabled then
-		for _, target in pairs(Players:GetPlayers()) do
-			createEspFor(target)
+		if not connections.espAdded then
+			connections.espAdded = Players.PlayerAdded:Connect(refreshEspFor)
 		end
-		connections.espAdded = Players.PlayerAdded:Connect(createEspFor)
-		connections.espRemoving = Players.PlayerRemoving:Connect(removeEspFor)
+		if not connections.espRemoving then
+			connections.espRemoving = Players.PlayerRemoving:Connect(removeEspFor)
+		end
 	else
-		for _, target in pairs(Players:GetPlayers()) do
-			removeEspFor(target)
+		local anyEsp = state.boxEsp
+		if not anyEsp then
+			if connections.espAdded then connections.espAdded:Disconnect() end
+			if connections.espRemoving then connections.espRemoving:Disconnect() end
+			connections.espAdded = nil
+			connections.espRemoving = nil
 		end
-		if connections.espAdded then connections.espAdded:Disconnect() end
-		if connections.espRemoving then connections.espRemoving:Disconnect() end
-		connections.espAdded = nil
-		connections.espRemoving = nil
+	end
+end
+
+local function setBoxEsp(enabled: boolean)
+	state.boxEsp = enabled
+	updateAllEsp()
+
+	if enabled then
+		if not connections.espAdded then
+			connections.espAdded = Players.PlayerAdded:Connect(refreshEspFor)
+		end
+		if not connections.espRemoving then
+			connections.espRemoving = Players.PlayerRemoving:Connect(removeEspFor)
+		end
+	else
+		local anyEsp = state.nameEsp
+		if not anyEsp then
+			if connections.espAdded then connections.espAdded:Disconnect() end
+			if connections.espRemoving then connections.espRemoving:Disconnect() end
+			connections.espAdded = nil
+			connections.espRemoving = nil
+		end
 	end
 end
 
@@ -560,15 +722,89 @@ local function setLowGravity(enabled: boolean)
 	workspace.Gravity = enabled and config.lowGravity or config.defaultGravity
 end
 
+-- FOV
+local function setFov(enabled: boolean)
+	state.fov = enabled
+	workspace.CurrentCamera.FieldOfView = enabled and config.boostedFov or config.defaultFov
+end
+
+-- Player Teleport
+local function teleportToNearestPlayer()
+	local char = getCharacter()
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp or not hrp:IsA("BasePart") then
+		notify("No character found")
+		return
+	end
+
+	local myPos = hrp.Position
+	local nearest: Player? = nil
+	local nearestDist = math.huge
+
+	for _, target in pairs(Players:GetPlayers()) do
+		if target == player then continue end
+		local targetChar = target.Character
+		local targetHrp = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+		if targetHrp and targetHrp:IsA("BasePart") then
+			local dist = (targetHrp.Position - myPos).Magnitude
+			if dist < nearestDist then
+				nearestDist = dist
+				nearest = target
+			end
+		end
+	end
+
+	if nearest and nearest.Character then
+		local targetHrp = nearest.Character:FindFirstChild("HumanoidRootPart")
+		if targetHrp and targetHrp:IsA("BasePart") then
+			hrp.CFrame = targetHrp.CFrame + Vector3.new(0, 3, 0)
+			notify("Teleported to " .. nearest.Name)
+		end
+	else
+		notify("No nearby player found")
+	end
+end
+
+-- Reset Character
+local function resetCharacter()
+	local char = getCharacter()
+	if char then
+		char:BreakJoints()
+		notify("Character reset")
+	end
+end
+
+-- Panic: disable everything
+local function panic()
+	setFly(false)
+	setSpeed(false)
+	setInfiniteJump(false)
+	setJumpPower(false)
+	setNoClip(false)
+	setClickTeleport(false)
+	setNameEsp(false)
+	setBoxEsp(false)
+	setFullBright(false)
+	setLowGravity(false)
+	setFov(false)
+	notify("All features disabled")
+end
+
 -- Build UI toggles
-makeToggle("Fly", "WASD + Space/Shift in the air", setFly)
+makeToggle("Fly", "WASD + Q/E or Space/Shift", setFly)
 makeToggle("Speed Boost", "2x walk speed", setSpeed)
 makeToggle("Infinite Jump", "Jump anywhere, anytime", setInfiniteJump)
+makeToggle("Jump Power", "2x jump power", setJumpPower)
 makeToggle("NoClip", "Walk through walls", setNoClip)
 makeToggle("Click Teleport", "Click to teleport", setClickTeleport)
-makeToggle("ESP", "See player names through walls", setEsp)
+makeButton("Player Teleport", "Teleport to nearest player", "Go", teleportToNearestPlayer)
+makeToggle("Name ESP", "See player names through walls", setNameEsp)
+makeToggle("Box ESP", "Highlight outline around players", setBoxEsp)
 makeToggle("Full Bright", "Remove darkness", setFullBright)
 makeToggle("Low Gravity", "Moon gravity", setLowGravity)
+makeToggle("FOV Boost", "Wider field of view", setFov)
+makeButton("Reset Character", "Respawn your character", "Reset", resetCharacter)
+makeButton("Panic", "Disable all features", "Stop", panic)
 
 -- Draggable window
 local dragging = false
@@ -641,7 +877,9 @@ player.CharacterAdded:Connect(function()
 	task.wait(0.1)
 	if state.fly then setFly(true) end
 	if state.speed then setSpeed(true) end
+	if state.jumpPower then setJumpPower(true) end
 	if state.noClip then setNoClip(true) end
+	if state.fov then setFov(true) end
 end)
 
 -- Intro animation when the panel starts visible
