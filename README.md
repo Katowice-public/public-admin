@@ -15,6 +15,7 @@ A premium Roblox admin panel written in Luau for use as a `LocalScript`.
 - Player Teleport (teleport to nearest player)
 - Name ESP (player names + health through walls)
 - Box ESP (Highlight outline around players)
+- Team Check toggle (only show/target enemy players in ESP and Aimbot)
 - Full Bright
 - Low Gravity
 - FOV slider
@@ -48,6 +49,7 @@ Edit the `config` table at the top of `AdminPanel.luau` to change:
 - `aimbotRange` — default aimbot lock-on range
 - `aimbotSpeed` — default aimbot snap speed (1-100)
 - `aimbotPart` — target part name for the aimbot (default "Head")
+- `teamCheck` — default team check state for ESP and Aimbot (default `true`)
 - `uiTheme` — accent colors and background colors
 
 ## Disclaimers

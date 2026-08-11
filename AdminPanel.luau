@@ -17,6 +17,7 @@
 		- FOV slider
 		- Hitbox Expander with size slider
 		- Aimbot with range and speed sliders
+		- Team Check toggle for ESP and Aimbot
 		- Panic Button (disable all)
 		- Reset Character
 ]]
@@ -48,6 +49,7 @@ local config = {
 	aimbotRange = 200,
 	aimbotSpeed = 50,
 	aimbotPart = "Head",
+	teamCheck = true,
 	uiTheme = {
 		background = Color3.fromRGB(30, 30, 35),
 		accent = Color3.fromRGB(88, 101, 242),
@@ -70,6 +72,7 @@ local state = {
 	lowGravity = false,
 	hitboxExpander = false,
 	aimbot = false,
+	teamCheck = config.teamCheck,
 }
 
 local liveValues = {
@@ -235,7 +238,7 @@ padding.PaddingBottom = UDim.new(0, 6)
 padding.Parent = contentFrame
 
 -- Helpers
-local function makeToggle(name: string, description: string, callback: (boolean) -> ()): Frame
+local function makeToggle(name: string, description: string, initialEnabled: boolean, callback: (boolean) -> ()): Frame
 	local row = Instance.new("Frame")
 	row.Name = name .. "Row"
 	row.Size = UDim2.new(1, 0, 0, 56)
@@ -302,13 +305,17 @@ local function makeToggle(name: string, description: string, callback: (boolean)
 	knobCorner.CornerRadius = UDim.new(1, 0)
 	knobCorner.Parent = knob
 
-	local enabled = false
+	local enabled = initialEnabled
 
-	local function update()
+	local function updateVisual()
 		local targetColor = enabled and config.uiTheme.toggleOn or config.uiTheme.toggleOff
 		local targetPos = enabled and UDim2.new(1, -25, 0.5, -11) or UDim2.new(0, 3, 0.5, -11)
 		TweenService:Create(button, TweenInfo.new(0.2), { BackgroundColor3 = targetColor }):Play()
 		TweenService:Create(knob, TweenInfo.new(0.2), { Position = targetPos }):Play()
+	end
+
+	local function update()
+		updateVisual()
 		callback(enabled)
 	end
 
@@ -317,6 +324,7 @@ local function makeToggle(name: string, description: string, callback: (boolean)
 		update()
 	end)
 
+	updateVisual()
 	row.Parent = contentFrame
 	return row
 end
@@ -563,6 +571,13 @@ local function notify(text: string)
 	end)
 end
 
+-- Team check helper
+local function isEnemy(targetPlayer: Player): boolean
+	if not state.teamCheck then return true end
+	if not player.Team or not targetPlayer.Team then return true end
+	return player.Team ~= targetPlayer.Team
+end
+
 -- Feature implementations
 local function getCharacter(): Model?
 	return player.Character
@@ -776,6 +791,10 @@ end
 -- ESP
 local function refreshEspFor(targetPlayer: Player)
 	if targetPlayer == player then return end
+	if not isEnemy(targetPlayer) then
+		removeEspFor(targetPlayer)
+		return
+	end
 
 	local data = espObjects[targetPlayer]
 	if not data then
@@ -1263,6 +1282,7 @@ local function getClosestPlayerForAimbot(): Player?
 
 	for _, target in pairs(Players:GetPlayers()) do
 		if target == player then continue end
+		if not isEnemy(target) then continue end
 		local targetChar = target.Character
 		if not targetChar then continue end
 
@@ -1319,6 +1339,11 @@ local function setAimbotSpeed(value: number)
 	liveValues.aimbotSpeed = value
 end
 
+local function setTeamCheck(enabled: boolean)
+	state.teamCheck = enabled
+	updateAllEsp()
+end
+
 -- Panic: disable everything
 local function panic()
 	setFly(false)
@@ -1331,6 +1356,7 @@ local function panic()
 	setLowGravity(false)
 	setHitboxExpander(false)
 	setAimbot(false)
+	setTeamCheck(config.teamCheck)
 
 	sliderSetters.walkSpeed(16)
 	sliderSetters.jumpPower(50)
@@ -1344,29 +1370,30 @@ local function panic()
 end
 
 -- Build UI toggles
-makeToggle("Fly", "WASD + Q/E or Space/Shift", setFly)
+makeToggle("Fly", "WASD + Q/E or Space/Shift", state.fly, setFly)
 local _, setFlySpeedSlider = makeSlider("Fly Speed", "Set your fly speed", 10, 200, 50, function(value)
 	liveValues.flySpeed = value
 end)
 sliderSetters.flySpeed = setFlySpeedSlider
 local _, setWalkSpeedSlider = makeSlider("Walk Speed", "Set your walk speed (higher = higher ban risk)", 16, 200, 16, setWalkSpeed)
 sliderSetters.walkSpeed = setWalkSpeedSlider
-makeToggle("Infinite Jump", "Jump anywhere, anytime", setInfiniteJump)
+makeToggle("Infinite Jump", "Jump anywhere, anytime", state.infiniteJump, setInfiniteJump)
 local _, setJumpPowerSlider = makeSlider("Jump Power", "Set your jump power", 50, 200, 50, setJumpPower)
 sliderSetters.jumpPower = setJumpPowerSlider
-makeToggle("NoClip", "Walk through walls", setNoClip)
-makeToggle("Click Teleport", "Click to teleport", setClickTeleport)
+makeToggle("NoClip", "Walk through walls", state.noClip, setNoClip)
+makeToggle("Click Teleport", "Click to teleport", state.clickTeleport, setClickTeleport)
 makeButton("Player Teleport", "Teleport to nearest player", "Go", teleportToNearestPlayer)
-makeToggle("Name ESP", "See player names and health", setNameEsp)
-makeToggle("Box ESP", "Highlight outline around players", setBoxEsp)
-makeToggle("Full Bright", "Remove darkness", setFullBright)
-makeToggle("Low Gravity", "Moon gravity", setLowGravity)
+makeToggle("Name ESP", "See player names and health", state.nameEsp, setNameEsp)
+makeToggle("Box ESP", "Highlight outline around players", state.boxEsp, setBoxEsp)
+makeToggle("Team Check", "Only show/target enemy players", state.teamCheck, setTeamCheck)
+makeToggle("Full Bright", "Remove darkness", state.fullBright, setFullBright)
+makeToggle("Low Gravity", "Moon gravity", state.lowGravity, setLowGravity)
 local _, setFovSlider = makeSlider("FOV", "Set camera field of view", 70, 140, 70, setFov)
 sliderSetters.fov = setFovSlider
-makeToggle("Hitbox Expander", "Expand player hitboxes", setHitboxExpander)
+makeToggle("Hitbox Expander", "Expand player hitboxes", state.hitboxExpander, setHitboxExpander)
 local _, setHitboxSizeSlider = makeSlider("Hitbox Size", "Set expanded hitbox size", 2, 50, 10, setHitboxSize)
 sliderSetters.hitboxSize = setHitboxSizeSlider
-makeToggle("Aimbot", "Auto aim at nearest player", setAimbot)
+makeToggle("Aimbot", "Auto aim at nearest player", state.aimbot, setAimbot)
 local _, setAimbotRangeSlider = makeSlider("Aimbot Range", "Max lock-on distance", 10, 1000, 200, setAimbotRange)
 sliderSetters.aimbotRange = setAimbotRangeSlider
 local _, setAimbotSpeedSlider = makeSlider("Aimbot Speed", "Snap speed (1-100)", 1, 100, 50, setAimbotSpeed)
