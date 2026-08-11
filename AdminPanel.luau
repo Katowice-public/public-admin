@@ -16,6 +16,7 @@
 		- Low Gravity
 		- FOV slider
 		- Hitbox Expander with size slider
+		- Aimbot with range and speed sliders
 		- Panic Button (disable all)
 		- Reset Character
 ]]
@@ -44,6 +45,9 @@ local config = {
 	defaultFov = 70,
 	boostedFov = 120,
 	hitboxSize = 10,
+	aimbotRange = 200,
+	aimbotSpeed = 50,
+	aimbotPart = "Head",
 	uiTheme = {
 		background = Color3.fromRGB(30, 30, 35),
 		accent = Color3.fromRGB(88, 101, 242),
@@ -65,6 +69,7 @@ local state = {
 	fullBright = false,
 	lowGravity = false,
 	hitboxExpander = false,
+	aimbot = false,
 }
 
 local liveValues = {
@@ -74,6 +79,8 @@ local liveValues = {
 	flySpeed = 50,
 	fov = 70,
 	hitboxSize = 10,
+	aimbotRange = 200,
+	aimbotSpeed = 50,
 }
 
 local sliderSetters: { [string]: (number) -> () } = {}
@@ -545,6 +552,10 @@ local function setFly(enabled: boolean)
 		flyConnection = RunService.RenderStepped:Connect(function()
 			if not flyBodyVelocity or not flyBodyVelocity.Parent then return end
 			local camera = workspace.CurrentCamera
+			local h = getHumanoid()
+			if h and h:GetState() ~= Enum.HumanoidStateType.Flying then
+				h:ChangeState(Enum.HumanoidStateType.Flying)
+			end
 			local direction = Vector3.zero
 
 			if UserInputService:IsKeyDown(Enum.KeyCode.W) then direction += camera.CFrame.LookVector end
@@ -967,7 +978,7 @@ local function setFov(value: number)
 end
 
 -- Hitbox Expander
-local hitboxObjects: { [Player]: { parts: { BasePart }, originalSizes: { [BasePart]: Vector3 }, connections: { [string]: RBXScriptConnection } } } = {}
+local hitboxObjects: { [Player]: { parts: { BasePart }, originalSizes: { [BasePart]: Vector3 }, expandedSizes: { [BasePart]: Vector3 }, scaleFactor: number, connections: { [string]: RBXScriptConnection } } } = {}
 
 local function applyHitboxToCharacter(char: Model, data)
 	local hrp = char:WaitForChild("HumanoidRootPart", 5)
@@ -1003,13 +1014,14 @@ local function applyHitboxToCharacter(char: Model, data)
 	table.insert(data.parts, sphere)
 
 	-- Resize every BasePart in the character to make bullets/projectiles much more likely to hit
-	local scaleFactor = math.clamp(liveValues.hitboxSize / 5, 1.5, 5)
+	data.scaleFactor = math.clamp(liveValues.hitboxSize / 5, 1.5, 5)
 	for _, part in pairs(char:GetDescendants()) do
 		if part:IsA("BasePart") then
 			if not data.originalSizes[part] then
 				data.originalSizes[part] = part.Size
 			end
-			part.Size = part.Size * scaleFactor
+			data.expandedSizes[part] = part.Size * data.scaleFactor
+			part.Size = data.expandedSizes[part]
 			part.Transparency = math.min(part.Transparency + 0.3, 0.9)
 		end
 	end
@@ -1018,8 +1030,18 @@ local function applyHitboxToCharacter(char: Model, data)
 	data.connections.descendantAdded = char.DescendantAdded:Connect(function(descendant)
 		if descendant:IsA("BasePart") and not data.originalSizes[descendant] then
 			data.originalSizes[descendant] = descendant.Size
-			descendant.Size = descendant.Size * scaleFactor
+			data.expandedSizes[descendant] = descendant.Size * data.scaleFactor
+			descendant.Size = data.expandedSizes[descendant]
 			descendant.Transparency = math.min(descendant.Transparency + 0.3, 0.9)
+		end
+	end)
+
+	-- Continuously re-apply sizes in case the game tries to revert them
+	data.connections.enforce = RunService.Heartbeat:Connect(function()
+		for part, target in pairs(data.expandedSizes) do
+			if part and part.Parent and part.Size ~= target then
+				part.Size = target
+			end
 		end
 	end)
 end
@@ -1029,12 +1051,17 @@ local function restoreHitboxFor(data)
 		data.connections.descendantAdded:Disconnect()
 		data.connections.descendantAdded = nil
 	end
+	if data.connections.enforce then
+		data.connections.enforce:Disconnect()
+		data.connections.enforce = nil
+	end
 	for part, original in pairs(data.originalSizes) do
 		if part and part.Parent then
 			part.Size = original
 		end
 	end
 	data.originalSizes = {}
+	data.expandedSizes = {}
 	for _, part in ipairs(data.parts) do
 		if part and part.Parent then
 			part:Destroy()
@@ -1050,6 +1077,8 @@ local function createHitboxFor(targetPlayer: Player)
 	local data = {
 		parts = {},
 		originalSizes = {},
+		expandedSizes = {},
+		scaleFactor = 1,
 		connections = {},
 	}
 
@@ -1164,6 +1193,72 @@ local function resetCharacter()
 	end
 end
 
+-- Aimbot
+local aimbotConnection: RBXScriptConnection? = nil
+
+local function getClosestPlayerForAimbot(): Player?
+	local camera = workspace.CurrentCamera
+	local closest: Player? = nil
+	local closestDist = math.huge
+
+	for _, target in pairs(Players:GetPlayers()) do
+		if target == player then continue end
+		local targetChar = target.Character
+		if not targetChar then continue end
+
+		local targetPart = targetChar:FindFirstChild(config.aimbotPart)
+		if not targetPart or not targetPart:IsA("BasePart") then
+			targetPart = targetChar:FindFirstChild("Head")
+		end
+		if not targetPart or not targetPart:IsA("BasePart") then
+			targetPart = targetChar:FindFirstChild("HumanoidRootPart")
+		end
+		if not targetPart or not targetPart:IsA("BasePart") then continue end
+
+		local dist = (targetPart.Position - camera.CFrame.Position).Magnitude
+		if dist < closestDist and dist <= liveValues.aimbotRange then
+			closestDist = dist
+			closest = target
+		end
+	end
+
+	return closest
+end
+
+local function setAimbot(enabled: boolean)
+	state.aimbot = enabled
+	if aimbotConnection then aimbotConnection:Disconnect() end
+
+	if enabled then
+		aimbotConnection = RunService.RenderStepped:Connect(function()
+			local camera = workspace.CurrentCamera
+			local target = getClosestPlayerForAimbot()
+			if target and target.Character then
+				local targetPart = target.Character:FindFirstChild(config.aimbotPart)
+				if not targetPart or not targetPart:IsA("BasePart") then
+					targetPart = target.Character:FindFirstChild("Head")
+				end
+				if not targetPart or not targetPart:IsA("BasePart") then
+					targetPart = target.Character:FindFirstChild("HumanoidRootPart")
+				end
+				if targetPart and targetPart:IsA("BasePart") then
+					local targetCFrame = CFrame.new(camera.CFrame.Position, targetPart.Position)
+					local alpha = math.clamp(liveValues.aimbotSpeed / 100, 0.01, 1)
+					camera.CFrame = camera.CFrame:Lerp(targetCFrame, alpha)
+				end
+			end
+		end)
+	end
+end
+
+local function setAimbotRange(value: number)
+	liveValues.aimbotRange = value
+end
+
+local function setAimbotSpeed(value: number)
+	liveValues.aimbotSpeed = value
+end
+
 -- Panic: disable everything
 local function panic()
 	setFly(false)
@@ -1175,12 +1270,15 @@ local function panic()
 	setFullBright(false)
 	setLowGravity(false)
 	setHitboxExpander(false)
+	setAimbot(false)
 
 	sliderSetters.walkSpeed(16)
 	sliderSetters.jumpPower(50)
 	sliderSetters.flySpeed(50)
 	sliderSetters.fov(70)
 	sliderSetters.hitboxSize(10)
+	sliderSetters.aimbotRange(200)
+	sliderSetters.aimbotSpeed(50)
 
 	notify("All features disabled")
 end
@@ -1208,6 +1306,11 @@ sliderSetters.fov = setFovSlider
 makeToggle("Hitbox Expander", "Expand player hitboxes", setHitboxExpander)
 local _, setHitboxSizeSlider = makeSlider("Hitbox Size", "Set expanded hitbox size", 2, 50, 10, setHitboxSize)
 sliderSetters.hitboxSize = setHitboxSizeSlider
+makeToggle("Aimbot", "Auto aim at nearest player", setAimbot)
+local _, setAimbotRangeSlider = makeSlider("Aimbot Range", "Max lock-on distance", 10, 1000, 200, setAimbotRange)
+sliderSetters.aimbotRange = setAimbotRangeSlider
+local _, setAimbotSpeedSlider = makeSlider("Aimbot Speed", "Snap speed (1-100)", 1, 100, 50, setAimbotSpeed)
+sliderSetters.aimbotSpeed = setAimbotSpeedSlider
 makeButton("Reset Character", "Respawn your character", "Reset", resetCharacter)
 makeButton("Panic", "Disable all features", "Stop", panic)
 

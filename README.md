@@ -4,7 +4,7 @@ A Roblox admin panel written in Luau for use as a `LocalScript`.
 
 ## Features
 
-- Fly (WASD + Q/E or Space / Shift) with speed slider, full camera orientation, and no walk animations
+- Fly (WASD + Q/E or Space / Shift) with speed slider, full camera orientation, no walk/fall animations, and locked forward pose
 - Walk Speed slider
 - Infinite Jump
 - Jump Power slider (works with both `JumpPower` and `JumpHeight` humanoids)
@@ -16,11 +16,12 @@ A Roblox admin panel written in Luau for use as a `LocalScript`.
 - Full Bright
 - Low Gravity
 - FOV slider
-- Hitbox Expander with size slider (enlarges all character parts; client-side effectiveness varies by game)
+- Hitbox Expander with size slider (enlarges all character parts and re-applies continuously; client-side effectiveness varies by game)
+- Aimbot with range and speed sliders (smoothly locks camera onto the nearest player's head)
 - Reset Character
 - Panic Button (disable all features instantly)
 - Close button fully unloads the panel and cleans up connections
-- Minimize button toggles between a small title bar and the full panel, changing `-` to `+`
+- Minimize button toggles between `-` and `+`
 
 ## Installation
 
@@ -42,10 +43,13 @@ Edit the `config` table at the top of `AdminPanel.luau` to change:
 - `lowGravity` — gravity value when Low Gravity is enabled
 - `defaultFov` / `boostedFov` — normal and boosted camera FOV
 - `hitboxSize` — default expanded hitbox size
+- `aimbotRange` — default aimbot lock-on range
+- `aimbotSpeed` — default aimbot snap speed (1-100)
+- `aimbotPart` — target part name for the aimbot (default "Head")
 - `uiTheme` — accent colors and background colors
 
 ## Notes
 
 - This script only works in a client-side `LocalScript`.
 - Some features may be blocked by anti-exploit systems in certain games.
-- The Hitbox Expander only affects client-side detection; it cannot bypass server-side hit validation.
+- The Hitbox Expander and Aimbot only affect client-side behavior; they cannot bypass server-side validation.
