@@ -1,11 +1,13 @@
-# public-admin
+# Universal Script
 
-A Roblox admin panel written in Luau for use as a `LocalScript`.
+A premium Roblox admin panel written in Luau for use as a `LocalScript`.
+
+**Credits:** @katowice00 on Telegram
 
 ## Features
 
 - Fly (WASD + Q/E or Space / Shift) with speed slider, full camera orientation, no walk/fall animations, and locked forward pose
-- Walk Speed slider
+- Walk Speed slider *(higher speeds = higher ban risk)*
 - Infinite Jump
 - Jump Power slider (works with both `JumpPower` and `JumpHeight` humanoids)
 - NoClip (walk through walls, restores collision on disable)
@@ -48,8 +50,13 @@ Edit the `config` table at the top of `AdminPanel.luau` to change:
 - `aimbotPart` — target part name for the aimbot (default "Head")
 - `uiTheme` — accent colors and background colors
 
-## Notes
+## Disclaimers
 
+- **Use at your own risk.** Higher walk speeds, blatant ESP, aimbot, and hitbox expansion increase the chance of being detected and banned.
 - This script only works in a client-side `LocalScript`.
 - Some features may be blocked by anti-exploit systems in certain games.
 - The Hitbox Expander and Aimbot only affect client-side behavior; they cannot bypass server-side validation.
+
+## Credits
+
+Made by **@katowice00** on Telegram.

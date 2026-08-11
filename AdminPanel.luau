@@ -1,5 +1,5 @@
 --[[
-	LocalScript Admin Panel for Roblox
+	Universal Script - Roblox Admin Panel
 	Place this script in StarterPlayerScripts (or StarterGui as a LocalScript).
 	Default toggle key: RightShift
 	Features:
@@ -110,6 +110,20 @@ local corner = Instance.new("UICorner")
 corner.CornerRadius = UDim.new(0, 12)
 corner.Parent = mainFrame
 
+local mainGradient = Instance.new("UIGradient")
+mainGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, config.uiTheme.background),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(45, 45, 55)),
+})
+mainGradient.Rotation = 90
+mainGradient.Parent = mainFrame
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Thickness = 1.5
+mainStroke.Color = Color3.fromRGB(70, 70, 85)
+mainStroke.Transparency = 0.5
+mainStroke.Parent = mainFrame
+
 local shadow = Instance.new("ImageLabel")
 shadow.Name = "Shadow"
 shadow.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -126,7 +140,7 @@ shadow.Parent = mainFrame
 
 local titleBar = Instance.new("Frame")
 titleBar.Name = "TitleBar"
-titleBar.Size = UDim2.new(1, 0, 0, 44)
+titleBar.Size = UDim2.new(1, 0, 0, 54)
 titleBar.BackgroundColor3 = config.uiTheme.accent
 titleBar.BorderSizePixel = 0
 titleBar.Parent = mainFrame
@@ -135,17 +149,37 @@ local titleCorner = Instance.new("UICorner")
 titleCorner.CornerRadius = UDim.new(0, 12)
 titleCorner.Parent = titleBar
 
+local titleGradient = Instance.new("UIGradient")
+titleGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, config.uiTheme.accent),
+	ColorSequenceKeypoint.new(1, config.uiTheme.accentDark),
+})
+titleGradient.Rotation = 135
+titleGradient.Parent = titleBar
+
 local titleText = Instance.new("TextLabel")
 titleText.Name = "Title"
-titleText.Size = UDim2.new(1, -80, 1, 0)
-titleText.Position = UDim2.new(0, 16, 0, 0)
+titleText.Size = UDim2.new(1, -90, 0, 28)
+titleText.Position = UDim2.new(0, 16, 0, 6)
 titleText.BackgroundTransparency = 1
-titleText.Text = "Admin Panel"
-titleText.Font = Enum.Font.GothamBold
-titleText.TextSize = 18
+titleText.Text = "Universal Script"
+titleText.Font = Enum.Font.GothamBlack
+titleText.TextSize = 20
 titleText.TextColor3 = config.uiTheme.text
 titleText.TextXAlignment = Enum.TextXAlignment.Left
 titleText.Parent = titleBar
+
+local creditsText = Instance.new("TextLabel")
+creditsText.Name = "Credits"
+creditsText.Size = UDim2.new(1, -90, 0, 16)
+creditsText.Position = UDim2.new(0, 16, 0, 32)
+creditsText.BackgroundTransparency = 1
+creditsText.Text = "by @katowice00 on Telegram"
+creditsText.Font = Enum.Font.Gotham
+creditsText.TextSize = 11
+creditsText.TextColor3 = Color3.fromRGB(230, 230, 255)
+creditsText.TextXAlignment = Enum.TextXAlignment.Left
+creditsText.Parent = titleBar
 
 local minimizeButton = Instance.new("TextButton")
 minimizeButton.Name = "Minimize"
@@ -180,8 +214,8 @@ closeCorner.Parent = closeButton
 
 local contentFrame = Instance.new("ScrollingFrame")
 contentFrame.Name = "Content"
-contentFrame.Size = UDim2.new(1, -24, 1, -56)
-contentFrame.Position = UDim2.new(0, 12, 0, 50)
+contentFrame.Size = UDim2.new(1, -24, 1, -66)
+contentFrame.Position = UDim2.new(0, 12, 0, 60)
 contentFrame.BackgroundTransparency = 1
 contentFrame.BorderSizePixel = 0
 contentFrame.ScrollBarThickness = 4
@@ -212,6 +246,12 @@ local function makeToggle(name: string, description: string, callback: (boolean)
 	local rowCorner = Instance.new("UICorner")
 	rowCorner.CornerRadius = UDim.new(0, 8)
 	rowCorner.Parent = row
+
+	local rowStroke = Instance.new("UIStroke")
+	rowStroke.Thickness = 1
+	rowStroke.Color = Color3.fromRGB(55, 55, 60)
+	rowStroke.Transparency = 0.7
+	rowStroke.Parent = row
 
 	local label = Instance.new("TextLabel")
 	label.Name = "Label"
@@ -293,6 +333,12 @@ local function makeButton(name: string, description: string, buttonText: string,
 	rowCorner.CornerRadius = UDim.new(0, 8)
 	rowCorner.Parent = row
 
+	local rowStroke = Instance.new("UIStroke")
+	rowStroke.Thickness = 1
+	rowStroke.Color = Color3.fromRGB(55, 55, 60)
+	rowStroke.Transparency = 0.7
+	rowStroke.Parent = row
+
 	local label = Instance.new("TextLabel")
 	label.Name = "Label"
 	label.Size = UDim2.new(1, -96, 0, 22)
@@ -333,6 +379,14 @@ local function makeButton(name: string, description: string, buttonText: string,
 	buttonCorner.CornerRadius = UDim.new(0, 8)
 	buttonCorner.Parent = button
 
+	local buttonGradient = Instance.new("UIGradient")
+	buttonGradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, config.uiTheme.accent),
+		ColorSequenceKeypoint.new(1, config.uiTheme.accentDark),
+	})
+	buttonGradient.Rotation = 135
+	buttonGradient.Parent = button
+
 	button.MouseButton1Click:Connect(callback)
 
 	row.Parent = contentFrame
@@ -350,6 +404,12 @@ local function makeSlider(name: string, description: string, min: number, max: n
 	local rowCorner = Instance.new("UICorner")
 	rowCorner.CornerRadius = UDim.new(0, 8)
 	rowCorner.Parent = row
+
+	local rowStroke = Instance.new("UIStroke")
+	rowStroke.Thickness = 1
+	rowStroke.Color = Color3.fromRGB(55, 55, 60)
+	rowStroke.Transparency = 0.7
+	rowStroke.Parent = row
 
 	local label = Instance.new("TextLabel")
 	label.Name = "Label"
@@ -1289,7 +1349,7 @@ local _, setFlySpeedSlider = makeSlider("Fly Speed", "Set your fly speed", 10, 2
 	liveValues.flySpeed = value
 end)
 sliderSetters.flySpeed = setFlySpeedSlider
-local _, setWalkSpeedSlider = makeSlider("Walk Speed", "Set your walk speed", 16, 200, 16, setWalkSpeed)
+local _, setWalkSpeedSlider = makeSlider("Walk Speed", "Set your walk speed (higher = higher ban risk)", 16, 200, 16, setWalkSpeed)
 sliderSetters.walkSpeed = setWalkSpeedSlider
 makeToggle("Infinite Jump", "Jump anywhere, anytime", setInfiniteJump)
 local _, setJumpPowerSlider = makeSlider("Jump Power", "Set your jump power", 50, 200, 50, setJumpPower)
@@ -1313,6 +1373,37 @@ local _, setAimbotSpeedSlider = makeSlider("Aimbot Speed", "Snap speed (1-100)",
 sliderSetters.aimbotSpeed = setAimbotSpeedSlider
 makeButton("Reset Character", "Respawn your character", "Reset", resetCharacter)
 makeButton("Panic", "Disable all features", "Stop", panic)
+
+local disclaimerFrame = Instance.new("Frame")
+disclaimerFrame.Name = "Disclaimer"
+disclaimerFrame.Size = UDim2.new(1, 0, 0, 48)
+disclaimerFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+disclaimerFrame.BorderSizePixel = 0
+disclaimerFrame.LayoutOrder = #contentFrame:GetChildren() + 1
+disclaimerFrame.Parent = contentFrame
+
+local disclaimerCorner = Instance.new("UICorner")
+disclaimerCorner.CornerRadius = UDim.new(0, 8)
+disclaimerCorner.Parent = disclaimerFrame
+
+local disclaimerStroke = Instance.new("UIStroke")
+disclaimerStroke.Thickness = 1
+disclaimerStroke.Color = Color3.fromRGB(80, 70, 70)
+disclaimerStroke.Transparency = 0.6
+disclaimerStroke.Parent = disclaimerFrame
+
+local disclaimerLabel = Instance.new("TextLabel")
+disclaimerLabel.Name = "DisclaimerText"
+disclaimerLabel.Size = UDim2.new(1, -16, 1, -12)
+disclaimerLabel.Position = UDim2.new(0, 8, 0, 6)
+disclaimerLabel.BackgroundTransparency = 1
+disclaimerLabel.Text = "Use at your own risk. Higher speeds and blatant features increase ban chance.\nCredits: @katowice00 on Telegram"
+disclaimerLabel.Font = Enum.Font.Gotham
+disclaimerLabel.TextSize = 11
+disclaimerLabel.TextColor3 = config.uiTheme.subText
+disclaimerLabel.TextWrapped = true
+disclaimerLabel.TextYAlignment = Enum.TextYAlignment.Center
+disclaimerLabel.Parent = disclaimerFrame
 
 -- Draggable window
 local dragging = false
@@ -1405,7 +1496,7 @@ local function unload()
 		end
 	end
 
-	notify("Admin Panel unloaded")
+	notify("Universal Script unloaded | @katowice00")
 	task.delay(0.5, function()
 		screenGui:Destroy()
 	end)
@@ -1430,4 +1521,4 @@ if config.openOnStart then
 	TweenService:Create(mainFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, 320, 0, 420) }):Play()
 end
 
-notify("Admin Panel loaded. Press RightShift to toggle.")
+notify("Universal Script loaded | @katowice00 on Telegram | RightShift to toggle")
