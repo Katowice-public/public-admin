@@ -1,0 +1,7 @@
+# Generated test artifact
+test/_combined.luau
+
+# Downloaded Luau CLI
+/luau
+/tmp/luau
+*.zip
