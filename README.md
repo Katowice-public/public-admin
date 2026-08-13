@@ -27,6 +27,8 @@ farming**, and a set of **misc utilities**.
 ```
 src/
   Loader.luau            LocalScript — entry point. Requires & boots everything.
+  Main.luau              Executor entry point — loads every module from GitHub
+                        via loadstring(game:HttpGet(...)) and boots everything.
   Modules/
     Config.luau          Shared settings + UI theme (edit this to tune behaviour)
     Utils.luau           Helpers: character accessors, teleport, virtual input,
@@ -67,6 +69,24 @@ UI via `env.UI.addSection / addToggle / addSlider / addDropdown / addButton`.
 > `LocalScript`. The `Modules` folder must be a direct child of the loader
 > (named exactly `Modules`).
 
+## Running it with an executor (loadstring from GitHub)
+
+`Main.luau` at the repo root is the executor entry point. It fetches every
+module from the GitHub raw URL over HTTP, loads each with `loadstring`, and
+assembles the whole script — no files need to be in the game tree. Paste this
+one line into your executor:
+
+```lua
+loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/Katowice-public/public-admin/main/Main.luau"
+))()
+```
+
+To test a specific branch/fork, change `BASE` at the top of `Main.luau` (or the
+branch in the raw URL). `Main.luau` tries `game:HttpGet` first, then falls back
+to `syn.request` / `http_request` / `fluxus.request` so it works across most
+executors.
+
 ## Configuration
 
 Edit `src/Modules/Config.luau` to change defaults without touching feature
@@ -89,7 +109,8 @@ Expected output:
 [ok] LevelFarm initialised
 [ok] ChestFarm initialised
 [ok] Misc initialised
-ALL MODULES LOADED SUCCESSFULLY
+ALL MODULES LOADED SUCCESSFULLY (Loader flow)
+MAIN.LUAU (loadstring entry) RAN SUCCESSFULLY
 ```
 
 ## Notes

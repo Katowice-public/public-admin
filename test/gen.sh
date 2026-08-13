@@ -168,6 +168,10 @@ for f in Config Utils UI LevelFarm ChestFarm Misc; do
   cat "$SRC/Modules/$f.luau"
   echo "]==]"
 done
+# Main.luau lives at the repo root (the loadstring entry point).
+echo "MODS[\"Main\"] = [==["
+cat "$SRC/../Main.luau"
+echo "]==]"
 
 cat <<'FOOTER'
 -- Run the Loader flow -------------------------------------------------------
@@ -187,7 +191,39 @@ for _, name in ipairs({ "LevelFarm", "ChestFarm", "Misc" }) do
 	print("[ok] " .. name .. " initialised")
 end
 
-print("ALL MODULES LOADED SUCCESSFULLY")
+print("ALL MODULES LOADED SUCCESSFULLY (Loader flow)")
+
+-- Now exercise Main.luau (the loadstring entry point) with a stubbed HTTP so
+-- the production "loadstring(game:HttpGet(...))()" path is validated too.
+do
+	local mainEnv = setmetatable({}, { __index = function(_, k) return env[k] or _G[k] end })
+
+	-- Stub game that serves module source over HttpGet and proxies GetService.
+	local stubGame = setmetatable({
+		HttpGet = function(self, url)
+			local name = url:match("Modules/([%w]+)%.luau$")
+			assert(name, "unexpected url: " .. url)
+			assert(MODS[name], "no source for " .. name)
+			return MODS[name]
+		end,
+		GetService = function(self, svc) return game:GetService(svc) end,
+	}, { __index = function(_, k) return game[k] end })
+	mainEnv.game = stubGame
+
+	-- loadstring wrapper that binds each compiled module to mainEnv so the
+	-- loaded modules see the Roblox stubs (mirrors what an executor does).
+	mainEnv.loadstring = function(src, name)
+		local fn = loadstring(src, name)
+		setfenv(fn, mainEnv)
+		return fn
+	end
+
+	local fn = loadstring(MODS.Main, "@Main")
+	setfenv(fn, mainEnv)
+	local ok, err = pcall(fn)
+	if not ok then error("Main.luau failed: " .. tostring(err)) end
+	print("MAIN.LUAU (loadstring entry) RAN SUCCESSFULLY")
+end
 FOOTER
 } > "$OUT"
 
